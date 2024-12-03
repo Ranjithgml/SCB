@@ -1,0 +1,84 @@
+import React, {
+  FC,
+  useEffect,
+  useState,
+} from "react";
+import './css/otherwallets-landing-screen.scss';
+import { useAuth } from "../../../context/auth-context";
+import { api } from "../../../../kitsu";
+import { useIntl } from "react-intl";
+import OtherWalletsDetailModal from "./otherwallets-detail-modal";
+import ModalSpinner from "../../../components/generic/modal-spinner";
+import RouteConfig from "../../../config/routes";
+import { useNavigate } from "react-router-dom";
+import DelinkConfirmModal from "../common-screens/delink-confirm-modal";
+import { redirectGhanaHomeScreen } from "../../../utils";
+
+const OtherWalletsLandingScreen: FC = () => {
+  const { token, interceptorConfigured } = useAuth();
+  const [isLinking, setIsLinking] = useState<boolean>(true);
+  const [pageLoaded, setPageLoaded] = useState<boolean>(false);
+  const [apiWalletData, setApiWalletData] = useState<any>([]);
+  const navigate = useNavigate();
+  const getOtherWalletDetails = async () => {
+    api
+      .get("/wallets", {
+        params: {
+          filter: {
+            "payment-type][EQ": "WTAC",
+            "wallet-type][EQ": "OTHER",
+          }
+        },
+      })
+      .then((details: any) => {
+        const WalletData = details.data[0]["wallet-details"];
+        setApiWalletData(details);
+        if (WalletData?.length > 0) {
+          setPageLoaded(true);
+          setIsLinking(false);
+        }
+        setPageLoaded(true);
+      })
+      .catch((err) => {
+        console.log("error other wallet", err);
+        const { status: errorStatus, detail } = err && err.errors[0];
+        setPageLoaded(true);
+        let errorMessage = "";
+        if (errorStatus === "400") {
+          errorMessage = detail;
+        }
+        navigate(RouteConfig.LINKING_DELINKING_ERROR, { state: { errorMessage, isLinking: false } });
+      })
+  }
+
+  useEffect(() => {
+    if (token && interceptorConfigured && !pageLoaded) {
+      getOtherWalletDetails();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps    
+  }, [token, interceptorConfigured, pageLoaded, isLinking]);
+
+  return (
+    <>
+      {
+        !pageLoaded ?
+          <ModalSpinner />
+          :
+          <>
+            {isLinking ? (
+              <DelinkConfirmModal
+                handleConfirm={() => navigate(RouteConfig.LINK_FORM)}
+                onCloseClicked={() => { redirectGhanaHomeScreen() }}
+                isLandingPage={true}
+              ></DelinkConfirmModal>
+            ) : (
+              <OtherWalletsDetailModal apiWalletData={apiWalletData}
+              ></OtherWalletsDetailModal>
+            )}
+          </>
+      }
+    </>
+  );
+};
+
+export default OtherWalletsLandingScreen;
