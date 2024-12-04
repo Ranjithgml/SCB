@@ -1,0 +1,133 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../../../kitsu';
+import { useIntl } from 'react-intl';
+import OtherWalletsDetailModal from './OtherWalletsDetailModal';
+
+// Mock dependencies
+jest.mock('react-router-dom', () => ({
+  useNavigate: jest.fn(),
+  useLocation: jest.fn(() => ({ pathname: '/current-route' })),
+}));
+
+jest.mock('../../../../kitsu', () => ({
+  api: {
+    post: jest.fn(),
+  },
+}));
+
+jest.mock('react-intl', () => ({
+  useIntl: () => ({
+    formatMessage: jest.fn(({ id }) => id),
+  }),
+}));
+
+describe('OtherWalletsDetailModal', () => {
+  const mockNavigate = jest.fn();
+  const mockApiWalletData = {
+    data: [
+      {
+        "payment-type": "type1",
+        "wallet-details": [
+          {
+            "wallet-type": "wallet1",
+            "account-number": "12345",
+            "contact-number": "9876543210",
+            "wallet-holder-name": "Test User",
+          },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    (useNavigate as jest.Mock).mockReturnValue(mockNavigate);
+    jest.clearAllMocks();
+  });
+
+  test('renders the modal with wallet details', () => {
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    
+    // Verify elements in the modal
+    expect(screen.getByTestId('add-confirm-review')).toBeInTheDocument();
+    expect(screen.getByTestId('add-confirm-form')).toBeInTheDocument();
+    expect(screen.getByText('linking.wallet.linked.otherwallet')).toBeInTheDocument();
+    expect(screen.getByText('Test User')).toBeInTheDocument();
+    expect(screen.getByText('Mobile 9876543210')).toBeInTheDocument();
+  });
+
+  test('navigates to add new wallet when button is clicked', () => {
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    const addButton = screen.getByTestId('terms-conf-btn');
+
+    fireEvent.click(addButton);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/link-form');
+  });
+
+  test('opens review modal on wallet selection', () => {
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    const walletItem = screen.getByText('Test User');
+
+    fireEvent.click(walletItem);
+
+    expect(screen.getByText('linking.wallet.title.otherwallet')).toBeInTheDocument();
+  });
+
+  test('handles confirm button in delink confirm modal', async () => {
+    const mockApiResponse = { data: { 'receipt-num': '12345' } };
+    (api.post as jest.Mock).mockResolvedValue(mockApiResponse);
+
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    const walletItem = screen.getByText('Test User');
+    
+    // Trigger modals
+    fireEvent.click(walletItem);
+    fireEvent.click(screen.getByText('linking.wallet.title.otherwallet'));
+
+    // Confirm delink action
+    fireEvent.click(screen.getByText('linking.wallet.title.otherwallet'));
+
+    expect(api.post).toHaveBeenCalledWith(
+      '/wallets',
+      expect.objectContaining({
+        "action": "UNLINK",
+        "request-type": "UNLINKING_ACC_TO_WALLET",
+      }),
+      {}
+    );
+
+    // Ensure navigation
+    expect(mockNavigate).toHaveBeenCalledWith('/linking-delinking-success', expect.anything());
+  });
+
+  test('handles API error gracefully', async () => {
+    const mockError = { errors: [{ status: '400', detail: 'Bad Request' }] };
+    (api.post as jest.Mock).mockRejectedValue(mockError);
+
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    const walletItem = screen.getByText('Test User');
+    
+    // Trigger modals
+    fireEvent.click(walletItem);
+    fireEvent.click(screen.getByText('linking.wallet.title.otherwallet'));
+
+    // Confirm delink action
+    fireEvent.click(screen.getByText('linking.wallet.title.otherwallet'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/linking-delinking-error', {
+      state: { errorMessage: 'Bad Request', isLinking: false },
+    });
+  });
+
+  test('renders spinner when loading', () => {
+    render(<OtherWalletsDetailModal apiWalletData={mockApiWalletData} />);
+    
+    const walletItem = screen.getByText('Test User');
+    fireEvent.click(walletItem);
+    
+    // Assume spinner should be visible
+    expect(screen.queryByTestId('spinner')).toBeInTheDocument();
+  });
+});
