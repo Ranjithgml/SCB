@@ -1,0 +1,154 @@
+import React, {
+  FC,
+  useState,
+} from "react";
+import { useLocation } from "react-router-dom";
+import RouteConfig from "../../../config/routes";
+import {
+  ProtonButton,
+  ProtonIcon,
+} from "@scb/proton-components-react";
+import { useNavigate } from "react-router-dom";
+import './css/otherwallets-detail-modal.scss';
+import ModalSpinner from "../../../components/generic/modal-spinner";
+import personIcon from "../other-wallets/assets/personIcon.svg";
+import DelinkConfirmModal from "../common-screens/delink-confirm-modal";
+import LinkDelinkReviewModal from "../common-screens/link-delink-review-modal";
+import { api } from "../../../../kitsu";
+import { useIntl } from "react-intl";
+import { redirectGhanaHomeScreen } from "../../../utils";
+
+interface POtherWalletProps {
+  apiWalletData: [];
+}
+
+const OtherWalletsDetailModal: FC<POtherWalletProps> = ({ apiWalletData }: any) => {
+  const navigate = useNavigate();
+  const intl = useIntl();
+  const [selectedDelinkData, setSelectedDelinkData] = useState({});
+  const [isLoadingScreen, setLoadingScreen] = useState<boolean>(false);
+  const [isDelinkReview, setIsDelinkReview] = useState<boolean>(false);
+  const [isDelinkConfirmModal, setIsDelinkConfirmModal] = useState<boolean>(false);
+
+  const handleConfirm = async () => {
+    let payload: any = {
+      "payment-type": `${apiWalletData.data[0]["payment-type"]}`,
+      "wallet-type": `${apiWalletData.data[0]["wallet-details"][0]["wallet-type"]}`,
+      "action": "UNLINK",
+      "account-number": `${apiWalletData.data[0]["wallet-details"][0]["account-number"]}`,
+      "sub-payment-type": "UNLINK",
+      "request-type": "UNLINKING_ACC_TO_WALLET",
+      "settlement-type": "NA",
+      "phone": `${apiWalletData.data[0]["wallet-details"][0]["contact-number"]}`
+    }
+    setLoadingScreen(true);
+    await api.post("/wallets", payload, {}).then((res) => {
+      if (res.data) {
+        setIsDelinkConfirmModal(false);
+        navigate(RouteConfig.LINKING_DELINKING_SUCCESS, { state: { linkData: apiWalletData.data[0]["wallet-details"][0], isLinking: false, refId: res.data["receipt-num"] } });
+      }
+    }).catch((err: any) => {
+      const { status: errorStatus, detail } = err && err.errors[0];
+      let errorMessage = "";
+      if (errorStatus === "400") {
+        errorMessage = detail;
+      }
+      navigate(RouteConfig.LINKING_DELINKING_ERROR, { state: { errorMessage, isLinking: false } });
+    })
+  }
+  return (
+    <div className="other-wallet-delink">
+      <div className="proton-modal">
+        <div className="proton-modal__backdrop"></div>
+        <div className="proton-modal__container">
+          <div className="proton-modal__title">
+            <span data-testid="add-confirm-review">
+              {intl.formatMessage({ id: "linking.wallet.title.otherwallet" })}
+            </span>
+            <ProtonIcon
+              className="proton-modal__close-button"
+              name="x-solid"
+              width="24px"
+              height="24px"
+              color="black"
+              onClick={() => { redirectGhanaHomeScreen() }}
+              data-testid="add-confirm-close"
+            ></ProtonIcon>
+          </div>
+          <div
+            className="proton-modal__content proton-container"
+            data-testid="add-confirm-form"
+          >
+            <div className="confirm-title" data-testid="add-confirm-text">
+              {intl.formatMessage({ id: "linking.wallet.linked.otherwallet" })}
+            </div>
+            <div>
+              {apiWalletData?.data?.length && apiWalletData.data[0]["wallet-details"].map((data, index) =>
+                <div key={index} onClick={() => {
+                  setIsDelinkReview(true);
+                  setSelectedDelinkData(data);
+                }}>
+                  <div className="user-details">
+                    <div className="proton-icon-style">
+                      <ProtonIcon
+                        name=""
+                        className="person-icon-inner"
+                        externalSource={personIcon}
+                        width="32px"
+                        height="32px"
+                      />
+                    </div>
+                    <span className="user-name">{data["wallet-holder-name"]}</span>
+                    <span className="user-mobile">Mobile {data["contact-number"]}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="review-button-container">
+            <ProtonButton
+              fullWidth
+              onClick={() => { navigate(RouteConfig.LINK_FORM); }}
+              data-testid="terms-conf-btn"
+            >
+              {intl.formatMessage({ id: "linking.wallet.addnewwallet" })}
+            </ProtonButton>
+          </div>
+        </div>
+      </div>
+      {isDelinkReview ? (
+        <LinkDelinkReviewModal
+          linkData={selectedDelinkData}
+          isLinking={false}
+          onCloseClicked={function (): void {
+            setIsDelinkReview(false);
+          }}
+          onDelinkConfirmClicked={function (): void {
+            setIsDelinkReview(false);
+            setIsDelinkConfirmModal(true);
+          }}
+        ></LinkDelinkReviewModal>
+      ) : (
+        <></>
+      )}
+      {isDelinkConfirmModal ?
+        (
+          <div>
+            <DelinkConfirmModal
+              handleConfirm={handleConfirm}
+              onCloseClicked={function (): void {
+                setIsDelinkReview(true);
+                setIsDelinkConfirmModal(!isDelinkConfirmModal);
+              }}
+            ></DelinkConfirmModal>
+          </div>
+        )
+        : (
+          <></>
+        )}
+      {isLoadingScreen ? <ModalSpinner /> : <></>}
+    </div>
+  );
+};
+
+export default OtherWalletsDetailModal;
