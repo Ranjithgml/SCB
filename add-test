@@ -1,0 +1,1605 @@
+import React, { useState, useEffect, FC, useContext, useRef } from "react";
+import Accordion from "../../../components/generic/accordion";
+import AccordionItem from "../../../components/generic/accordion-item";
+import AccountSkeletonLoader from "../../../components/generic/account-skeleton-loader";
+import SelectedAccount from "../../../components/functional/selected-account";
+import AccountTiles from "../../../components/functional/account-tiles";
+import Header from "../../../components/functional/header";
+import MobileNavigation from "../../../components/generic/mobile-navigation";
+import { useLocation, useNavigate } from "react-router-dom";
+import "./css/local-transfer.scss";
+import { api } from "../../../../kitsu";
+import { ProtonIcon, ProtonUppercase } from "@scb/proton-components-react";
+import classNames from "classnames";
+import PayeeList from "../../../components/functional/payee-list";
+import SelectedPayee from "../../../components/functional/selected-payee";
+import Review from "../confirmation-screens/transfer-confirm-screen";
+import SelectedCreditCard from "../../../components/functional/selected-credit-card";
+import {
+  ErrorData,
+  ExitAction,
+  FormStepType,
+  FundTransferType,
+  PAID_TYPE,
+  fundTransferTypeMappings,
+  paidByTypeMappings,
+  TMXConfig,
+  alertMsg,
+  AmountEntered,
+} from "../../../enums/commonType";
+import { useAuth } from "../../../context/auth-context";
+import {
+  convertToAELocalTime,
+  goBackToHomeScreen,
+  isMobileBrowser,
+  sortCasasOnCurrency,
+} from "../../../utils";
+import { GlobalErrorContext } from "../../../components/generic/global-error-handling";
+import { useIntl } from "react-intl";
+import ExchangeRate from "../../../components/functional/exchange-rate";
+import FundTransferMode from "../../../components/functional/fund-transfer-mode";
+import BankChargesLT from "../../../components/functional/bank-charges-lt";
+import ImportantNotice from "../../../components/generic/important-notice";
+import FraudsterNote from "../../../components/functional/fraudster-note";
+import CashAdvance from "../../../components/functional/cash-advance";
+import PurposeOfTransfer from "../../../components/functional/purpose-of-transfer";
+import ScheduleAndNotes from "../../../components/functional/schedule-and-notes";
+import AmountContainer from "../../../components/functional/amount-container";
+import Footer from "../../../components/functional/footer";
+import ModalSpinner from "../../../components/generic/modal-spinner";
+import debounce from "lodash.debounce";
+import useTmx from "../../../hooks/useTmx";
+import configData from "../../../../config.json";
+import { QueryParamsContext } from "../../../context/QueryParamsContext";
+import "../../css/common.scss";
+import RouteConfig from "../../../config/routes";
+import Banner from "../../../components/functional/banner";
+import { get } from "lodash";
+import { Modal, ModalButton } from "../../../components/generic/modal/modal";
+
+const LocalTransferScreen: FC = () => {
+  const paramsContext = useContext(QueryParamsContext);
+  const country = paramsContext["country"];
+  const localCurrency = configData[country]
+    ? configData[country].LocalCurrency
+    : "AED";
+  const ltMaxLimitImmdMode = configData[country] ? configData[country].LT.TranMaxLimit : 50000;
+  const intl = useIntl();
+  const { state } = useLocation();
+  // const { isProfilingComplete } = useTmx(TMXConfig.PAGES.LOCAL_TRANSFER);
+  const [fromManagePayeeFlow, setFromManagePayeeFlow] = useState(false);
+  const { token, interceptorConfigured, deviceId, appVersionNumber } =
+    useAuth();
+  const [currentStep, setCurrentStep] = useState<FormStepType>(
+    FormStepType.FROM
+  );
+
+  const [currentFundTransferMode, setCurrentFundTransferMode] =
+    useState<FundTransferType>(FundTransferType.NORMAL);
+
+  const [fromAccounts, setFromAccounts] = useState([]);
+  const [fromCreditCards, setFromCreditCards] = useState([]);
+  const [payees, setPayees] = useState([]);
+  const [tpPayees, setTpPayees] = useState([]);
+
+  // From Account
+  const [selectedFromAccount, setSelectedFromAccount] = useState<any>();
+  const [
+    selectedFromAccountNumberEncrypted,
+    setSelectedFromAccountNumberEncrypted,
+  ] = useState("");
+  const [selectedDbtActNo, setSelectedDbtActNo] = useState("");
+
+  // Payees
+  const [selectedPayee, setSelectedPayee] = useState<any>();
+  const [selectedPayeeName, setSelectedPayeeName] = useState("");
+
+  // Cash Advance
+  const [selectedFromCreditCard, setSelectedFromCreditCard] = useState<any>();
+  const [isCashAdvanceFlow, setIsCashAdvanceFlow] = useState<boolean>(false);
+  const [isFetchingCreditCards, setIsFetchingCreditCards] =
+    useState<boolean>(true);
+
+  const [isFetchingAccounts, setIsFetchingAccounts] = useState<boolean>(true);
+  const [isFetchingPayees, setIsFetchingPayees] = useState<boolean>(true);
+
+  const [amountEntered, setAmountEntered] = useState<AmountEntered>({
+    from: false,
+    to: false,
+  });
+  const [toAmount, setToAmount] = useState("");
+  const [txnAmount, setTxnAmount] = useState("");
+  const [txnCurr, setTxnCurr] = useState("");
+  const [isReview, setReviewToogle] = useState<boolean>(false);
+  const [isSwipeDisabled, setSwipeDisabled] = useState<boolean>(false);
+  const [notes, setNotes] = useState("");
+  const [showNotes, setShowNotes] = useState<boolean>(false);
+  const [transferData, setTransferData] = useState<any>();
+  const [otherData, setOtherData] = useState<any>();
+
+  const [showToAccordion, setShowToAccordion] = useState<boolean>(false);
+  const [showAmountAccordion, setShowAmountAccordion] =
+    useState<boolean>(false);
+  const [showXCCYView, setShowXCCYView] = useState<boolean>(false);
+  const [isValid, setIsValid] = useState<boolean>(false);
+
+  const [purposeOfTransfers, setPurposeOfTransfers] = useState([]);
+  const [purposeOfTransfer, setPurposeOfTransfer] = useState();
+  const [focusOnInput, setFocusOnInput] = useState<boolean>(false);
+  const [isIPIMode, setIsIPIMode] = useState(false);
+
+  const [paidByType, setPaidByType] = useState<PAID_TYPE>(PAID_TYPE.PAID_BY_ME);
+  const [isPaymentsAPISuccess, setIsPaymentsAPISuccess] = useState(false);
+  const [isLoadingScreen, setLoadingScreen] = useState<boolean>(false);
+  const { setGlobalErrorData } = useContext(GlobalErrorContext);
+  const [cashAdvCard, setCashAdvCarddetails] = useState<any>();
+  const [tmxPageId, setTmxPageId] = useState<string>("");
+  const [pageLoaded, setPageLoaded] = useState<boolean>(false);
+
+  const [bankInfo, setBankInfo] = useState({});
+  const [alertInfo, setAlertInfo] = useState<string>("");
+  const currAmount = useRef<string>("");
+  const [ibftThreshold, setIbftThreshold] = useState<number>(0);
+  const [snmStatus, setSnmStatus] = useState<boolean>(false);
+
+  const [isPurposeOfTransferOpen, setIsPurposeOfTransferOpen] = useState(false);
+  const currencyDecimalNotAllowed = ["JPY", "KRW"];
+  const [showInlineError, setShowInlineError] = useState(false);
+  const [inlineErrorMessage, setInlineErrorMessage] = useState("");
+  const [popLength, setPopLength] = useState(0);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [isNotesValid, setIsNotesValid] = useState(true);
+
+  const [txnMode, setTxnMode] = useState("");
+  const [settlementType, setSettlementType] = useState("FTS");
+  const [subPaymentType, setSubPaymenType] = useState("");
+  const [paymentScheme, setPaymentScheme] = useState("");
+  const [chrgOpt, setChrgOpt] = useState<string | null>("");
+  const [showBankCharges, setShowBankCharges] = useState(false);
+
+  // Error Handling
+  const [errorMsg, setErrorMsg] = useState("");
+  const [errorModel, setErroModel] = React.useState(false);
+  const coolingPeriod:boolean = configData[country]?.coolingPeriod;
+  const [beneName, setBeneName] = useState("Payee name as per beneficiary bank");
+  const [beneErrorStatus, setBeneErrorStatus] = useState("");
+
+  const actionOnPOT = (action: boolean) => {
+    setIsPurposeOfTransferOpen(action);
+  };
+
+  useEffect(() => {
+    if (state?.payeeDetail) {
+      setFromManagePayeeFlow(true);
+    }
+  }, [state]);
+ useEffect(() => {
+    if(!isCashAdvanceFlow &&
+      selectedPayee &&
+      selectedPayee["payee-type"] === "IBPAYEE" &&
+      selectedFromAccount?.["currency-code"] === localCurrency &&
+      selectedPayee?.["acct-currency"] === localCurrency &&
+      currentFundTransferMode !== "IMMEDIATE" &&
+      selectedPayee?.["acct-type-code"] !== "CC") {
+        setShowBankCharges(true);
+      } else if(
+        selectedPayee?.["payee-type"] === "IBPAYEE" &&
+        (selectedFromAccount?.["currency-code"] != localCurrency || selectedPayee?.["acct-currency"] != localCurrency) 
+        && currentFundTransferMode !== "IMMEDIATE") {
+        setShowBankCharges(true);
+      } else {
+        setShowBankCharges(false);
+      }
+  }, [selectedPayee, isCashAdvanceFlow, selectedFromAccount, currentFundTransferMode, localCurrency])
+  
+  const getAccounts = async () => {
+    api
+      .get("casas", {
+        params: {
+          filter: {
+            "casas][filterType][EQ": "IBFT_A2A",
+            "casas][fallback][EQ": true,
+            "casas][nickNameFlag][EQ": true,
+          },
+        },
+      })
+      .then((casa: { data: [] }) => {
+        const allCasas = casa.data;
+        allCasas.sort(sortCasasOnCurrency);
+        setFromAccounts(allCasas);
+        setIsFetchingAccounts(false);
+      })
+      .catch((error: any) => {
+        setIsFetchingAccounts(false);
+        //  TODO: Show this error only in the from/to section
+        let message = intl.formatMessage({
+          id: "pay.transfer.failed.accountunavilable",
+        });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setGlobalErrorData(errorObj);
+      });
+  };
+  const updateCoolingPeriodTime = async () => {
+    const countryCode = country;
+    try {
+      const { data } = await api.request({
+        url: `cpp-rdm/references/${countryCode}`,
+        type: "references",
+        params: {
+          filter: {
+            category: "COOLING_PERIOD",
+            key: "COOLING_PERIOD_HOURS",
+          },
+        },
+      });
+      // console.log(configData[country].coolingPeriodHours+ "")
+      configData[country].coolingPeriodHours = Number(
+        data.details.find((e) => e.key === "COOLING_PERIOD_HOURS").value
+      );
+      
+      if (!configData[country].coolingPeriodHours) throw "";
+    } catch (err) {
+      let message = intl.formatMessage({ id: "z" });
+      const errorObj: ErrorData = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+      setGlobalErrorData(errorObj);
+    }
+  };
+  const getPayees = () => {
+    // https://<host>/retail/api/v3/cpp-payees/details?filter[payeeType][EQ]=LOCAL
+    api
+      .get("cpp-payees/details", {
+        params: { filter: { "payeeType][EQ": "LOCAL" } },
+      })
+      .then((payees: { data: [] }) => {
+        const allPayees = payees.data;
+        const tpPayees = allPayees.filter(
+          (payee) => payee["payee-type"] === "TPPAYEE"
+        );
+        setTpPayees(tpPayees);
+        setPayees(allPayees);
+        setIsFetchingPayees(false);
+      })
+      .catch((error: any) => {
+        setIsFetchingPayees(false);
+        let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setGlobalErrorData(errorObj);
+      });
+  };
+  const getCreditCards = () => {
+    //https://uat.sc.com/retail/api/v3/credit-cards?filter[transferFilter][EQ]=YES&filter[functionCd][EQ]=OAFT_C2A
+    api
+      .get("credit-cards", {
+        params: {
+          filter: { "transferFilter][EQ": "YES", "functionCd][EQ": "TPFT_C2A" },
+        },
+      })
+      .then((creditCard: { data: [] }) => {
+        const allCreditCards = creditCard.data;
+        setIsFetchingCreditCards(false);
+        setFromCreditCards(allCreditCards);
+      })
+      .catch((error: any) => {
+        setIsFetchingCreditCards(false);
+        setLoadingScreen(false);
+        //  TODO: Show only in the from/to section
+        let message = intl.formatMessage({
+          id: "pay.transfer.failed.cardunavilable",
+        });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setGlobalErrorData(errorObj);
+      });
+  };
+  const getPops = () => {
+    let paymentType =
+      selectedPayee["payee-type"] === "TPPAYEE" ? "TPFT" : "IBFT";
+    api
+      .get("cpp-rdm/pop", {
+        params: {
+          filter: {
+            destCtryCd: "ALL",
+            paymentType: paymentType,
+            subPaymentType: selectedFromCreditCard
+              ? "C2A"
+              : selectedPayee["acct-type-code"] === "CC"
+              ? "A2C"
+              : fundTransferTypeMappings[currentFundTransferMode] === "WSI"
+              ? `A2A-WSI`
+              : "A2A",
+            accountType: "ALL",
+          },
+        },
+      })
+      .then((pops: any) => {
+        setPurposeOfTransfers(pops.data);
+        setPopLength(pops.data.length);
+        if (pops.data.length === 1) {
+          setPurposeOfTransfer(pops.data[0]);
+        }
+      })
+      .catch((error: any) => {
+        let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setGlobalErrorData(errorObj);
+      });
+  };
+  function getCashAdvancePayload() {
+    let payload: any = {
+      "payment-type": "TPFT",
+      "sub-payment-type": "C2A",
+      "dbt-acc-type": "CARD",
+      "txn-cur": txnCurr,
+      "txn-amount": txnAmount,
+      "debit-amount": toAmount,
+      "payment-exec-mode": "I",
+      "dbt-acc-number": selectedDbtActNo,
+      "cdt-acc-type": "CASA",
+      "pop-cd": purposeOfTransfer ? purposeOfTransfer["pop-cd"] : null,
+      "cdt-acc-cur": selectedPayee["acct-currency"],
+      "cdt-acc-number": selectedPayee["acct-number"],
+      "bank-charges-amount": null,
+      "dt-transfer": new Date().toISOString(),
+      "dbt-acc-name": selectedFromCreditCard["desc"],
+      "dbt-acc-cur": selectedFromCreditCard["currency-code"],
+      "cdt-acc-name": selectedPayeeName,
+      "request-type": "Initiate",
+      "pop-desc": purposeOfTransfer ? purposeOfTransfer["pop-desc"] : null,
+      "settlement-type": "STS",
+      "txn-remarks": notes,
+      "tmx-app-version": appVersionNumber ? appVersionNumber : null,
+      "tmx-device-id": deviceId ? deviceId : null,
+      payee: selectedPayee,
+      "tmx-browser-agent": isMobileBrowser() ? "mobilebrowser" : null,
+    };
+    return payload;
+  }
+
+  useEffect(() => {
+    let subPymtType =
+      selectedPayee?.["acct-type-code"] === "CC" ? "A2C" : "A2A";
+    setSubPaymenType(subPymtType);
+  }, [selectedPayee]);
+  useEffect(() => {
+    const batchStatus: string = bankInfo?.["is-ipp-batch-subscribed"]
+      ? bankInfo?.["is-ipp-batch-subscribed"]
+      : "";
+    const rtStatus = bankInfo?.["is-ipp-real-time-subscribed"]
+      ? bankInfo?.["is-ipp-real-time-subscribed"]
+      : "";
+    if(selectedPayee?.["payee-type"] == "IBPAYEE") {
+    if (rtStatus == "N" && batchStatus == "N") {
+      if (subPaymentType == "A2A") {
+        if (Number(txnAmount) <= ibftThreshold) {
+          setTxnMode("WSI");
+          setSettlementType("WSI");
+          setIsIPIMode(true);
+          setPaymentScheme("STS");
+        } else {
+          setTxnMode("FTS");
+          setSettlementType("FTS");
+          setIsIPIMode(false);
+          setPaymentScheme("STS");
+        }
+      } else if (subPaymentType == "A2C") {
+        setTxnMode("FTS");
+        setSettlementType("FTS");
+        setIsIPIMode(false);
+        setPaymentScheme("STS");
+      }
+    } else if (rtStatus == "Y" && batchStatus == "Y") {
+      if (subPaymentType == "A2A") {
+        if (Number(txnAmount) <= ibftThreshold) {
+          setTxnMode("IPP");
+          setSettlementType("IPP");
+          setIsIPIMode(false);
+          setPaymentScheme("SCPAY");
+        } else {
+          setTxnMode("FTS");
+          setSettlementType("FTS");
+          setIsIPIMode(false);
+          setPaymentScheme("STS");
+        }
+      } else if (subPaymentType == "A2C") {
+        if (Number(txnAmount) <= ibftThreshold) {
+          setTxnMode("IPP");
+          setSettlementType("IPP");
+          setIsIPIMode(false);
+          setPaymentScheme("SCPAY");
+        } else {
+          setTxnMode("FTS");
+          setSettlementType("FTS");
+          setIsIPIMode(false);
+          setPaymentScheme("STS");
+        }
+      }
+    } else if (rtStatus == "Y" && batchStatus == "N") {
+      if (Number(txnAmount) <= ibftThreshold) {
+        setTxnMode("IPP");
+        setSettlementType("IPP");
+        setIsIPIMode(false);
+        setPaymentScheme("SCPAY");
+      } else {
+        setTxnMode("FTS");
+        setSettlementType("FTS");
+        setIsIPIMode(false);
+        setPaymentScheme("STS");
+      }
+    } else if (rtStatus == "N" && batchStatus == "Y") {
+      if (Number(txnAmount) <= ibftThreshold) {
+        setTxnMode("IPP");
+        setSettlementType("IPP");
+        setIsIPIMode(false);
+        setPaymentScheme("SCPAY");
+      } else {
+        setTxnMode("FTS");
+        setSettlementType("FTS");
+        setIsIPIMode(false);
+        setPaymentScheme("STS");
+      }
+    } else {
+      setSettlementType("FTS");
+      setPaymentScheme("STS");
+      setTxnMode("FTS");
+      setIsIPIMode(false);
+    }
+    } else {
+      setSettlementType("STS");
+      setPaymentScheme("STS");
+    }
+  }, [amountEntered, purposeOfTransfer, selectedPayee, txnAmount]);
+  useEffect(() => {
+    if(selectedPayee?.["payee-type"] == "IBPAYEE") {
+      if(Number(txnAmount) < 50000 ) {
+        setChrgOpt("OUR");
+      } else if(Number(txnAmount) >= 50000 ) {
+        console.log(paidByTypeMappings[paidByType] != "OUR")
+        if(paidByTypeMappings[paidByType] != "OUR") {
+          setChrgOpt(paidByTypeMappings[paidByType]);
+        } else {
+          setChrgOpt("OUR");
+        }
+      } else {
+        setChrgOpt(null);
+      }
+   }
+  }, [selectedPayee, txnAmount, paidByTypeMappings, paidByType]);
+
+  function getPayeePaymentPayload(onSubmit: boolean = false) {
+    const isLocalCurrency =
+    selectedFromAccount?.["currency-code"] === localCurrency &&
+    selectedPayee?.["acct-currency"] === localCurrency;
+    let payload: any = {
+      "payment-type":
+        selectedPayee["payee-type"] === "TPPAYEE" ? "TPFT" : "IBFT",
+      "sub-payment-type": subPaymentType,
+      "dbt-acc-type": "CASA",
+      "txn-cur": txnCurr,
+      "txn-amount": txnAmount,
+      "payment-exec-mode": "I",
+      "dbt-acc-number": selectedDbtActNo,
+      "cdt-acc-type":
+        selectedPayee["acct-type-code"] === "CC" ? "CARD" : "CASA",
+      "pop-cd": purposeOfTransfer ? purposeOfTransfer["pop-cd"] : null,
+      "chrg-opt": chrgOpt,
+      "txn-mode": txnMode,
+      "cdt-acc-cur": selectedPayee["acct-currency"],
+      "cdt-acc-number": selectedPayee["acct-number"],
+      "dt-transfer": new Date().toISOString(),
+      "dbt-acc-name": selectedFromAccount["nick-name"]
+        ? selectedFromAccount["nick-name"]
+        : selectedFromAccount["product-description"], //TODO: what field is required, we are sending description currently
+      "dbt-acc-cur": selectedFromAccount["currency-code"],
+      "cdt-acc-name": selectedPayeeName, //   TODO: Are we supposed to send fullname, i also nick-name?
+      "request-type": "Initiate",
+      "pop-desc": purposeOfTransfer?.["pop-desc"],
+      "settlement-type": settlementType,
+      "payment-scheme": paymentScheme,
+      "txn-remarks": notes,
+      "tmx-app-version": appVersionNumber ? appVersionNumber : null,
+      "tmx-device-id": deviceId ? deviceId : null,
+      payee: selectedPayee,
+      "cdt-bic-cd":
+        selectedPayee["payee-type"] === "IBPAYEE" &&
+        currentFundTransferMode === "IMMEDIATE" &&
+        isLocalCurrency
+          ? selectedPayee["institution-details"][0]["institution-code"]
+          : null,
+      "tmx-browser-agent": isMobileBrowser() ? "mobilebrowser" : null,
+    };
+
+    //  Send the debit amount as last shown indicative only in the last post call
+    if (showXCCYView) {
+      payload["debit-amount"] = onSubmit
+        ? transferData?.["converted-amt"]
+        : txnAmount;
+    } else {
+      payload["debit-amount"] = txnAmount;
+    }
+
+    return payload;
+  }
+  async function postPayments(config = {}) {
+    if (parseFloat(txnAmount) > 0 && !showInlineError) {
+      try {
+        let payload: any = isCashAdvanceFlow
+          ? getCashAdvancePayload()
+          : getPayeePaymentPayload();
+        setIsPaymentsAPISuccess(false);
+        api.post("cpp-payments", payload, config).then((res: any) => {
+            setTransferData(res.data);
+            setIsPaymentsAPISuccess(true);
+          })
+          .catch((error: any) => {
+            setIsPaymentsAPISuccess(false);
+            let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+            const errorObj: ErrorData = {
+              exitAction: ExitAction.WARNING,
+              message: message,
+              data: error,
+            };
+            setGlobalErrorData(errorObj);
+          });
+      } catch (err: any) { }
+    }
+  }
+  const showReadNotes = () => {
+    setShowNotes(true);
+  };
+
+  const textareaChange = (value): void => {
+    setNotes(value);
+  };
+  const navigate = useNavigate();
+  // const onSubmitTrasfer = () => {
+  //     setReviewToogle(true);
+  //     setSwipeDisabled(true);
+  // }
+  const handleToPayees = () => {
+    setFromManagePayeeFlow(false);
+    setShowToAccordion(true);
+    setCurrentStep(FormStepType.TO);
+    setBankInfo({});
+  };
+  const paymentCallTrigger = async () => {
+    try {
+      //  TODO: Submit called two times, added debounce as a quick fix
+      setSnmStatus(false);
+      setLoadingScreen(true);
+      let payload: any = isCashAdvanceFlow
+        ? getCashAdvancePayload()
+        : getPayeePaymentPayload(true);
+      let { data } = await api.post("cpp-payments", payload);
+      let otherData = {
+        "vat-charges": intl.formatMessage({
+          id: "pay.transfer.lt.immd.mode.vat.message",
+        }),
+      };
+      if (
+        selectedPayee?.["payee-type"] === "IBPAYEE" &&
+        selectedFromAccount?.["currency-code"] === localCurrency &&
+        selectedPayee?.["acct-currency"] === localCurrency &&
+        currentFundTransferMode === "IMMEDIATE"
+      ) {
+        setOtherData(otherData);
+      } else {
+        setOtherData({});
+      }
+      setTransferData(data);
+      setReviewToogle(true);
+      setSwipeDisabled(true);
+      setLoadingScreen(false);
+      // This is a temporary fix . Need to do a better fix.
+      const swipeButton: any =
+        document.getElementById("ProtonButton")?.children[0].children[0];
+      swipeButton.style = { left: "2px" };
+      //{{swipeButton.style ={left:'2px'}}}
+      return data;
+    } catch (err: any) {
+      setLoadingScreen(false);
+      let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+      const errorObj: ErrorData = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+      setGlobalErrorData(errorObj);
+    }
+  };
+
+  const onSubmitTrasfer = () => {
+    const currencyCheckToTriggerRDMCall =
+      selectedFromAccount?.["currency-code"] === localCurrency &&
+      selectedPayee?.["acct-currency"] === localCurrency;
+    if (
+      selectedPayee?.["payee-type"] === "IBPAYEE" &&
+      currencyCheckToTriggerRDMCall
+    ) {
+      const bankStatus = get(
+        bankInfo,
+        "bank-availability-status",
+        ""
+      )?.toLowerCase();
+      if (bankStatus !== "" && bankStatus === "offline") {
+        setSnmStatus(true);
+      } else {
+        paymentCallTrigger();
+      }
+    } else {
+      paymentCallTrigger();
+    }
+  };
+
+  const debouncedSubmitHandler = debounce(onSubmitTrasfer, 300);
+
+  //  Update the XCCYView
+  useEffect(() => {
+    const toCurrency = selectedPayee?.["acct-currency"];
+    const fromCurrency = isCashAdvanceFlow
+      ? selectedFromCreditCard?.["currency-code"]
+      : selectedFromAccount?.["currency-code"];
+
+    if (currentStep === FormStepType.FROM) {
+      setShowToAccordion(false);
+      setShowAmountAccordion(false);
+      setShowXCCYView(false);
+    } else if (currentStep === FormStepType.TO) {
+      if (toCurrency && fromCurrency !== toCurrency) {
+        setShowXCCYView(true);
+      } else {
+        setShowXCCYView(false);
+      }
+      setShowToAccordion(true);
+      setShowAmountAccordion(false);
+    } else if (currentStep === FormStepType.AMOUNT) {
+      setShowToAccordion(true);
+      setShowAmountAccordion(true);
+      if (toCurrency && fromCurrency !== toCurrency) {
+        setShowXCCYView(true);
+      } else {
+        setShowXCCYView(false);
+      }
+    }
+  }, [
+    selectedFromAccount,
+    selectedFromCreditCard,
+    selectedPayee,
+    currentStep,
+    isCashAdvanceFlow,
+    fromManagePayeeFlow,
+  ]);
+
+  useEffect(() => {
+    setShowInlineError(false);
+    if (currentFundTransferMode === 'IMMEDIATE') {
+      if (parseFloat(txnAmount) > ltMaxLimitImmdMode) {
+        setInlineErrorMessage(intl.formatMessage({ id: "pay.transfer.lt.immd.mode.inline.error" }, {transferMaxLimit: ltMaxLimitImmdMode}));
+        setShowInlineError(true);
+      }
+    }
+    if (currencyDecimalNotAllowed.includes(txnCurr) && txnAmount && parseFloat(txnAmount) % 1 !== 0) {
+      setInlineErrorMessage(intl.formatMessage({ id: "pay.transfer.inline.error.decimal.not.allowed" }));
+      setShowInlineError(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFundTransferMode, txnAmount, txnCurr])
+
+  //  All the required fields are filled - validation
+  useEffect(() => {
+    let fromAccSelected = isCashAdvanceFlow
+      ? selectedFromCreditCard?.["currency-code"]
+      : selectedFromAccount?.["currency-code"];
+    let toAccSelected = selectedPayee;
+    let amountValid = parseFloat(toAmount) > 0;
+    let chargeAmtValid =
+      selectedPayee && selectedPayee["payee-type"] === "IBPAYEE"
+        ? transferData && transferData["chrg-amt"] != null
+        : true;
+    let isValid = isCashAdvanceFlow
+      ? fromAccSelected && toAccSelected && amountValid && purposeOfTransfer && !isDirty && isNotesValid
+      : fromAccSelected &&
+        toAccSelected &&
+        amountValid &&
+        beneName &&
+        purposeOfTransfer &&
+        paidByType &&
+        isPaymentsAPISuccess &&
+        !showInlineError &&
+        chargeAmtValid &&
+        !isDirty &&
+        isNotesValid;
+    setIsValid(isValid);
+  }, [
+    selectedFromAccount,
+    showXCCYView,
+    selectedFromCreditCard,
+    selectedPayee,
+    beneName,
+    purposeOfTransfer,
+    toAmount,
+    paidByType,
+    isCashAdvanceFlow,
+    transferData,
+    isPaymentsAPISuccess,
+    showInlineError,
+    isDirty,
+    isNotesValid
+  ]);
+
+  //  Trigger the Pop call whenver Payee is set/updated
+
+  const { isProfilingComplete } = useTmx(tmxPageId ? tmxPageId : "");
+  useEffect(() => {
+    if (!selectedPayee) {
+      return;
+    }
+    setPurposeOfTransfer(undefined);
+    if (
+      isProfilingComplete ||
+      fundTransferTypeMappings[currentFundTransferMode] === "WSI"
+    ) {
+      getPops();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedPayee,
+    selectedFromAccount,
+    selectedFromCreditCard,
+    isProfilingComplete,
+    currentFundTransferMode,
+  ]);
+
+  //  Make Payments call
+  useEffect(() => {
+    const abortController = new AbortController();
+    //  Not to trigger Payments call till the amount is entered
+    if (!txnAmount || isCashAdvanceFlow) {
+      return;
+    }
+
+    if (showXCCYView) {
+      setTransferData({ ...transferData, "fx-rate": null, "chrg-amt": null });
+    } else {
+      setTransferData({ ...transferData, "chrg-amt": null });
+    }
+    postPayments({
+      axiosOptions: {
+        signal: abortController.signal,
+      },
+    });
+    return () => {
+      abortController.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedFromAccount,
+    selectedFromCreditCard,
+    selectedPayee,
+    purposeOfTransfer,
+    paidByType,
+    amountEntered,
+    txnMode,
+    settlementType,
+    // txnAmount,
+    chrgOpt
+  ]);
+
+  //  Resetting focus states when amount section is not shown
+  useEffect(() => {
+    if (!showAmountAccordion) {
+      setFocusOnInput(false);
+    }
+  }, [showAmountAccordion]);
+
+  // focus on amount input when 'amount' step shown
+  useEffect(() => {
+    if (currentStep === FormStepType.AMOUNT) {
+      // this is needed to wait for element exist because of animation
+      setTimeout(() => {
+        setFocusOnInput(true);
+      }, 600);
+    }
+  }, [showXCCYView, currentStep]);
+
+  //  Resetting Fund Transfer Mode to Normal, if from or to selected with non-local currency
+  useEffect(() => {
+    if (
+      selectedFromAccount &&
+      selectedPayee &&
+      selectedPayee["payee-type"] === "IBPAYEE"
+    ) {
+      if (
+        selectedFromAccount?.["currency-code"] !== localCurrency ||
+        selectedPayee?.["acct-currency"] !== localCurrency
+      ) {
+        setCurrentFundTransferMode(FundTransferType.NORMAL);
+      }
+    }
+  }, [
+    selectedFromAccount,
+    selectedPayee,
+    setCurrentFundTransferMode,
+    localCurrency,
+  ]);
+
+  // Called on selection of an account in "from"
+  const fromAccountSelected = (index: number) => {
+    const selectedAccount = fromAccounts.find(
+      (account) => account["id"] === index
+    );
+    if (selectedAccount) {
+      const selectedAccountNumber: string = selectedAccount["account-number"];
+      const encryptedAccountNumber = selectedAccountNumber.slice(-4);
+      setToAmount("");
+      setTxnAmount("");
+      setNotes("");
+      setTransferData({ ...transferData, "fx-rate": null, "chrg-amt": null });
+      setSelectedFromAccount(selectedAccount);
+      setSelectedFromAccountNumberEncrypted(encryptedAccountNumber);
+      setSelectedDbtActNo(selectedAccountNumber);
+
+      setIsCashAdvanceFlow(false);
+      setShowAmountAccordion(false);
+    }
+
+    let formStep = FormStepType.TO;
+    if (fromManagePayeeFlow) {
+      let currencyCheckForManagePayeeFlow = selectedAccount
+      ? selectedAccount["currency-code"]
+      : "";
+      payeeSelected(state.payeeDetail.id, currencyCheckForManagePayeeFlow);
+    } else {
+      if (selectedPayee?.["acct-currency"]) {
+        formStep = FormStepType.AMOUNT;
+        setShowAmountAccordion(true);
+      } else {
+        setShowToAccordion(true);
+      }
+      setCurrentStep(formStep);
+    }
+    setIsCashAdvanceFlow(false);
+    setSelectedFromCreditCard(null);
+    window.parent.scrollTo({ top: 0 });
+  };
+
+  // Called if a credit-card is selected in "from" -- Cash Advance Flow
+  const fromCreditCardSelected = (index: number) => {
+    setIsCashAdvanceFlow(true);
+    setShowXCCYView(false);
+
+    const selectedCreditCard = fromCreditCards.find(
+      (creditCard) => creditCard["id"] === index
+    );
+    //selectedPayee["acct-type-code"] === "CC"
+    if (selectedCreditCard) {
+      setToAmount("");
+      setTxnAmount("");
+      setNotes("");
+      setTransferData({ ...transferData, "fx-rate": null, "chrg-amt": null });
+      setSelectedFromCreditCard(selectedCreditCard);
+      setLoadingScreen(true);
+      api
+        .get(`credit-cards/${selectedCreditCard["card-num"]}`, {
+          params: { filter: { financialDetailsRequired: "true" } },
+        })
+        .then((creditCard: { data: [] }) => {
+          const cardDetails = creditCard.data;
+          setCashAdvCarddetails(cardDetails);
+          setLoadingScreen(false);
+          setSelectedDbtActNo(selectedCreditCard["card-num"]);
+        })
+        .catch((error: any) => {
+          let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setLoadingScreen(false);
+          setCurrentStep(FormStepType.FROM);
+          setGlobalErrorData(errorObj);
+        });
+      window.parent.scrollTo({ top: 0 });
+    }
+    let formStep = FormStepType.TO;
+    if (fromManagePayeeFlow) {
+      payeeSelected(state.payeeDetail.id);
+    } else {
+      // Cash Advance can only happen for TPPAYEE with localCurrency as currency
+      if (
+        selectedPayee?.["acct-type-code"] !== "CC" &&
+        selectedPayee?.["payee-type"] === "TPPAYEE" &&
+        selectedPayee?.["acct-currency"] === localCurrency
+      ) {
+        formStep = FormStepType.AMOUNT;
+        setShowAmountAccordion(true);
+      } else {
+        setShowToAccordion(true);
+      }
+      setCurrentStep(formStep);
+    }
+  };
+
+  const goBackOneStep = () => {
+    if (currentStep === FormStepType.TO) {
+      setCurrentStep(FormStepType.FROM);
+    } else if (currentStep === FormStepType.AMOUNT) {
+      setCurrentStep(FormStepType.TO);
+    }
+  };
+
+  const validateCoolingPeriod = async (
+    selectedPayee: any
+  ): Promise<boolean | undefined> => {
+    let isEligibleToTransfer = false;
+    let eligibleTime;
+
+    await api
+      .request({
+        url: `cpp-payees/details/${selectedPayee["id"]}`,
+        type: "details",
+      })
+      .then((payee: { data: [] }) => {
+        isEligibleToTransfer =
+          payee.data["is-eligible-transfer"] == "Y" ? true : false;
+        eligibleTime = new Date(payee.data["eligible-time-transfer"]);
+      })
+      .catch((err) => {
+        let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: err,
+        };
+        setGlobalErrorData(errorObj);
+      });
+
+    // Checking the cooling peroid
+    if (!isEligibleToTransfer) {
+      setErrorMsg(
+        intl.formatMessage(
+          { id: "pay.transfer.coolingPeriod" },
+          {
+            hours: convertToAELocalTime(eligibleTime),
+          }
+        )
+      );
+      setErroModel(true);
+      return false;
+    }
+    return true;
+  };
+  const fetchBeneName = (payeeId) => {
+    api
+      .post("cpp-account-proxies", { "account-no": payeeId, "service-name": "PREPAYMENT_VALIDATION" })
+      .then((res: any) => {
+        if (res.data["customer-name"] && res.data["status-cd"] == 62) {
+          setBeneName(res.data["customer-name"])
+        } else {
+          setBeneErrorStatus(res.data["status-cd"])
+        }
+      })
+      .catch((error: any) => {
+        setBeneErrorStatus(error.errors[0].status)
+      });
+  }
+  const payeeSelected = async (index: number, fromAccCurrency: string = "") => {
+    setToAmount("");
+    setTxnAmount("");
+    setNotes("");
+    setTransferData({ ...transferData, "fx-rate": null, "chrg-amt": null });
+    let formStep = FormStepType.AMOUNT;
+    // reset to default values
+    setCurrentFundTransferMode(FundTransferType.NORMAL);
+
+    const selectedPayee = payees.find((payee) => payee["id"] === index);
+    if (selectedPayee) {
+      fetchBeneName(selectedPayee["acct-number"])
+      if(coolingPeriod && !await validateCoolingPeriod(selectedPayee)) return;
+
+      const pageId =
+        !isCashAdvanceFlow && selectedPayee["payee-type"] === "TPPAYEE"
+          ? TMXConfig.PAGES.TMX_LT_SCB
+          : selectedPayee["payee-type"] === "IBPAYEE" &&
+            selectedPayee["acct-type-code"] === "AC"
+          ? TMXConfig.PAGES.TMX_LT_A2A
+          : selectedPayee["payee-type"] === "IBPAYEE" &&
+            selectedPayee["acct-type-code"] === "CC"
+          ? TMXConfig.PAGES.TMX_LT_A2C
+          : TMXConfig.PAGES.TMX_LT_C2A;
+      setTmxPageId(pageId);
+      const selectedPayeeFirstName = selectedPayee["first-name"];
+      const selectedPayeeLastName = selectedPayee["last-name"]
+        ? selectedPayee["last-name"]
+        : "";
+      const fullName = selectedPayee["nick-name"]
+        ? selectedPayee["nick-name"]
+        : selectedPayeeFirstName + " " + selectedPayeeLastName;
+      setSelectedPayee(selectedPayee);
+      setSelectedPayeeName(fullName);
+      if (selectedPayee?.["acct-currency"]) {
+        formStep = FormStepType.AMOUNT;
+        setShowAmountAccordion(true);
+      } else {
+        setShowToAccordion(true);
+      }
+      let currencyCheckFromManagePayee = selectedFromAccount?.["currency-code"]
+        ? selectedFromAccount?.["currency-code"]
+        : fromAccCurrency;
+      const currencyCheckToTriggerRDMCall =
+        currencyCheckFromManagePayee === localCurrency &&
+        selectedPayee?.["acct-currency"] === localCurrency;
+      if (
+        selectedPayee?.["payee-type"] === "IBPAYEE" &&
+        currencyCheckToTriggerRDMCall
+      ) {
+        const AcNo: string = selectedPayee?.["acct-number"];
+        try {
+          let payloadObj = {
+            countryCode: country,
+            routingType: "IPP",
+          };
+          if (selectedPayee["acct-type-code"] === "CC") {
+            payloadObj["bankName"] =
+              selectedPayee?.["institution-details"][0]["institution-name"] ??
+              "";
+          } else {
+            payloadObj["routingCode"] = AcNo?.substring(4, 7);
+          }
+          const { data } = await api.request({
+            url: "cpp-rdm/banks",
+            type: "banks",
+            params: {
+              filter: payloadObj,
+            },
+          });
+          setBankInfo(data?.[0]);
+          const { data: items } = await api.request({
+            url: `cpp-rdm/references/${country}`,
+            type: "references",
+            params: {
+              filter: {
+                "references][category][EQ": "IBFT-IPP-THRESHOLD",
+              },
+            },
+          });
+          const maxThrehold = Number(get(items, "details[0].value", 0));
+          setIbftThreshold(maxThrehold);
+        } catch (err: any) {
+          setBankInfo({});
+          setIbftThreshold(0);
+        }
+      }
+      setCurrentStep(formStep);
+    }
+    window.parent.scrollTo({ top: 0 });
+  };
+
+  useEffect(() => {
+    if (token && interceptorConfigured && !pageLoaded) {
+      coolingPeriod && updateCoolingPeriodTime();
+      getAccounts();
+      getPayees();
+      getCreditCards();
+      setPageLoaded(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, interceptorConfigured, pageLoaded]);
+
+  const renderToList = () => {
+    // Filtering same CCY payees for Cash Advance flow
+    const tpPayeesFiltered = tpPayees.filter(
+      (payee) => payee["acct-currency"] === localCurrency
+    );
+    return (
+      <AccordionItem
+        clsNames={classNames("accordion lt_to")}
+        isOpen={currentStep === FormStepType.TO}
+        isHidden={!showToAccordion}
+        onCollapseClick={
+          fromManagePayeeFlow
+          ? () => {
+            handleToPayees();
+            setAlertInfo("");
+            setBankInfo({});
+            currAmount.current = "";
+          }
+        : () => {
+            setCurrentStep(FormStepType.TO);
+            setBankInfo({});
+            setAlertInfo("");
+            currAmount.current = "";
+          }
+        }
+        selected={
+          fromManagePayeeFlow ? (
+            <SelectedPayee
+              selectedPayeeName={state.payeeDetail.payeeNameValue}
+              selectedPayeeMerchantName={
+                state.payeeDetail.selectedBankOption["bank-name"]
+              }
+              selectedPayeeAccNumber={state.payeeDetail.acctNumber}
+            />
+          ) : (
+            selectedPayeeName && (
+              <SelectedPayee
+                selectedPayeeName={selectedPayeeName}
+                selectedPayeeMerchantName={selectedPayee?.["merchant-name"]}
+                selectedPayeeAccNumber={selectedPayee?.["acct-number"]}
+              />
+            )
+          )
+        }
+        titleLabelId="To"
+        subtitleLabelId={intl.formatMessage({ id: "pay.transfer.from.desc" })}
+        subtitleLabelIdBold="transfer to?"
+        dataTestId="step-to"
+      >
+        {isFetchingPayees ? (
+          <AccountSkeletonLoader />
+        ) : (
+          <div slot="content">
+            <PayeeList
+              payees={isCashAdvanceFlow ? tpPayeesFiltered : payees}
+              payeeSelected={payeeSelected}
+              buttonHandler={addPayeeBtnHandler}
+              fromCurrencySelected={selectedFromAccount?.["currency-code"]}
+              showCreditCards={false}
+              setPageLoaded={setPageLoaded}
+            />
+          </div>
+        )}
+      </AccordionItem>
+    );
+  };
+
+  const onModalClosed = () => {
+    setShowNotes(false);
+  };
+
+  const handleOnChangeToAmount = (value: string): void => {
+    setToAmount(value);
+    currAmount.current = value;
+    let newValue = parseFloat(value);
+    let current = parseFloat(toAmount);
+    if (!isNaN(newValue)) {
+      if (current !== newValue) {
+        setTxnCurr(selectedPayee["acct-currency"]);
+        setTransferData({ ...transferData, "fx-rate": null, "chrg-amt": null });
+        setTxnAmount(value);
+        setAmountEntered({ from: false, to: true });
+      }
+    } else {
+      setTransferData({ ...transferData, "chrg-amt": null });
+    }
+    setIsDirty(false);
+  };
+
+  const addPayeeBtnHandler = () => {
+    if (coolingPeriod && !configData[country].coolingPeriodHours) {
+      updateCoolingPeriodTime();
+      return;
+    }
+    const path = RouteConfig.ADD_PAYEE;
+    navigate(path);
+  };
+
+  const onAddPayee = () => {
+    navigate("/pay-transfer/add-payee");
+  };
+
+  useEffect(() => {
+    setTimeout(() => {
+      handleInputBlur();
+    }, 800);
+  }, [amountEntered]);
+  const handleInputBlur = () => {
+    setAlertInfo("");
+    const batchStatus: string = bankInfo?.["is-ipp-batch-subscribed"]
+      ? bankInfo?.["is-ipp-batch-subscribed"]
+      : "";
+    const rtStatus = bankInfo?.["is-ipp-real-time-subscribed"]
+      ? bankInfo?.["is-ipp-real-time-subscribed"]
+      : "";
+    let amount = currAmount.current;
+    const currencyCheck =
+      selectedFromAccount?.["currency-code"] === localCurrency &&
+      selectedPayee?.["acct-currency"] === localCurrency;
+    if (
+      rtStatus.toLocaleLowerCase() === "n" &&
+      batchStatus.toLocaleLowerCase() == "n" &&
+      parseFloat(amount) <= 50000 &&
+      selectedPayee["acct-type-code"] === "AC"
+    ) {
+      setAlertInfo("");
+    } else if (rtStatus.toLocaleLowerCase() === "y") {
+      if (Number(amount) !== 0 && Number(amount) <= ibftThreshold) {
+        setAlertInfo("");
+        setCurrentFundTransferMode(
+          currencyCheck ? FundTransferType.IMMEDIATE : FundTransferType.NORMAL
+        );
+      } else if (Number(amount) !== 0 && Number(amount) > ibftThreshold) {
+        setAlertInfo(alertMsg?.[1]);
+        setCurrentFundTransferMode(FundTransferType.NORMAL);
+      }
+    } else if (batchStatus.toLocaleLowerCase() === "y") {
+      if (Number(amount) !== 0 && Number(amount) <= ibftThreshold) {
+        setAlertInfo(alertMsg?.[0]);
+        setCurrentFundTransferMode(
+          currencyCheck ? FundTransferType.IMMEDIATE : FundTransferType.NORMAL
+        );
+      } else if (Number(amount) !== 0 && Number(amount) > ibftThreshold) {
+        setAlertInfo(alertMsg?.[1]);
+        setCurrentFundTransferMode(FundTransferType.NORMAL);
+      }
+    } else if (Number(amount) !== 0) {
+      setAlertInfo(alertMsg?.[1]);
+      setCurrentFundTransferMode(FundTransferType.NORMAL);
+    } else {
+    }
+  };
+
+  useEffect(() => {
+    setAlertInfo("");
+  }, [isIPIMode]);
+
+  return (
+    <div className="local_transfer">
+      <div className="mobile-header">
+        <MobileNavigation
+          title={intl.formatMessage({ id: "pay.transfer.local.transfer" })}
+          showBackButton={currentStep !== FormStepType.FROM}
+          onBackCallback={goBackOneStep}
+          onReturnCallback={() => goBackToHomeScreen(country)}
+        />
+      </div>
+      <div className="content">
+        <div className="lg-header" data-testid="label-lt-lg-header">
+          <Header
+            title={intl.formatMessage({ id: "pay.transfer.local.transfer" })}
+            onReturnCallback={() => goBackToHomeScreen(country)}
+          />
+        </div>
+        <div className="lg-body">
+          <Accordion>
+            <AccordionItem
+              clsNames={classNames("accordion lt_from ", {
+                xccy:
+                  selectedFromAccount?.["currency-code"] !==
+                  selectedPayee?.["acct-currency"],
+              })}
+              isOpen={currentStep === FormStepType.FROM}
+              onCollapseClick={() => setCurrentStep(FormStepType.FROM)}
+              selected={
+                !isCashAdvanceFlow ? (
+                  <SelectedAccount
+                    selectedAccBalance={
+                      selectedFromAccount?.["available-balance"]
+                    }
+                    selectedAccName={
+                      selectedFromAccount?.["nick-name"]
+                        ? selectedFromAccount?.["nick-name"]
+                        : selectedFromAccount?.["product-description"]
+                    }
+                    selectedAccNumber={selectedFromAccountNumberEncrypted}
+                    selectedAccCurrency={selectedFromAccount?.["currency-code"]}
+                  />
+                ) : (
+                  <SelectedCreditCard
+                    selectedAccBalance={selectedFromCreditCard?.["avail-cash"]}
+                    selectedAccName={selectedFromCreditCard?.["desc"]}
+                    selectedAccNumber={selectedFromCreditCard?.["card-num"]}
+                    selectedAccCurrency={
+                      selectedFromCreditCard?.["currency-code"]
+                    }
+                  />
+                )
+              }
+              titleLabelId={intl.formatMessage({ id: "pay.transfer.from" })}
+              subtitleLabelId={intl.formatMessage({
+                id: "pay.transfer.from.desc",
+              })}
+              subtitleLabelIdBold="transfer from?"
+              dataTestId="step-from"
+            >
+              <Banner module="LT" />
+              <div className="mobile-tiles">
+                {isFetchingAccounts ? (
+                  <AccountSkeletonLoader />
+                ) : (
+                  <div
+                    slot="content"
+                    style={{ display: "flex", flexDirection: "column" }}
+                  >
+                    <ProtonUppercase className="account-heading">
+                      MY ACCOUNTS
+                    </ProtonUppercase>
+                    <AccountTiles
+                      accounts={fromAccounts}
+                      creditCards={
+                        fromManagePayeeFlow
+                          ? state?.payeeDetail?.selectedCcy === localCurrency &&
+                            state?.payeeDetail?.selectedPayeeValue === "TPPAYEE"
+                            ? fromCreditCards
+                            : []
+                          : fromCreditCards
+                      }
+                      isFetchingCreditCards={isFetchingCreditCards}
+                      displayCreditCards={true}
+                      protonTileClicked={fromAccountSelected}
+                      creditCardSelected={fromCreditCardSelected}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="lg-tiles">
+                {isFetchingAccounts ? (
+                  <AccountSkeletonLoader />
+                ) : (
+                  <div
+                    slot="content"
+                    style={{ display: "flex", flexDirection: "column" }}
+                  >
+                    <ProtonUppercase className="account-heading">
+                      Accounts
+                    </ProtonUppercase>
+                    <AccountTiles
+                      accounts={fromAccounts}
+                      creditCards={
+                        fromManagePayeeFlow
+                          ? state?.payeeDetail?.selectedCcy === localCurrency &&
+                            state?.payeeDetail?.selectedPayeeValue === "TPPAYEE"
+                            ? fromCreditCards
+                            : []
+                          : fromCreditCards
+                      }
+                      isFetchingCreditCards={isFetchingCreditCards}
+                      displayCreditCards={true}
+                      protonTileClicked={fromAccountSelected}
+                      creditCardSelected={fromCreditCardSelected}
+                    />
+                  </div>
+                )}
+              </div>
+            </AccordionItem>
+            {renderToList()}
+            <AccordionItem
+              clsNames={classNames("accordion lt-amount-container ", {
+                xccy: showXCCYView,
+              })}
+              isOpen={currentStep === FormStepType.AMOUNT}
+              isExpandable={false}
+              isHidden={!showAmountAccordion}
+              onCollapseClick={() => setCurrentStep(FormStepType.AMOUNT)}
+              titleLabelId="Amount"
+              dataTestId="step-amount"
+            >
+              <div slot="content" className="amount-content">
+                <AmountContainer
+                  currency={selectedPayee?.["acct-currency"]}
+                  amount={toAmount}
+                  focus={focusOnInput}
+                  handleOnChange={handleOnChangeToAmount}
+                  showInlineError={showInlineError}
+                  inlineErrorMessage={inlineErrorMessage}
+                  setIsDirty={setIsDirty}
+                  {...(selectedPayee?.["payee-type"] === "IBPAYEE" &&
+                    selectedFromAccount?.["currency-code"] === localCurrency &&
+                    selectedPayee?.["acct-currency"] === localCurrency && {
+                      // selectedPayee?.["acct-type-code"] !== "CC" &&
+                      page: "LT",
+                      handleBlur: () => {
+                        setTimeout(() => {
+                          handleInputBlur();
+                        }, 1000);
+                      },
+                    })}
+                />
+                {!isCashAdvanceFlow &&
+                selectedPayee &&
+                selectedPayee["payee-type"] === "IBPAYEE" &&
+                selectedFromAccount?.["currency-code"] === localCurrency &&
+                selectedPayee?.["acct-currency"] === localCurrency ? (
+                  <>
+                    {currentFundTransferMode == "IMMEDIATE" ? (
+                      <p className="vat-charges-note">
+                        {intl.formatMessage({
+                          id: "pay.transfer.lt.immd.mode.vat.message",
+                        })}
+                      </p>
+                    ) : (
+                      <></>
+                    )}
+                  </>
+                ) : (
+                  <></>
+                )}
+                {isCashAdvanceFlow && cashAdvCard ? (
+                  <CashAdvance
+                    dbtAccCur={localCurrency}
+                    cashAdvanceAvailLimit={cashAdvCard["available-limit"]}
+                    bankCharges={cashAdvCard["bank-charges-amount"]}
+                    bankChargesRate={cashAdvCard["bank-charges-rate"]}
+                    cashAdvanceFeeRate={cashAdvCard["cash-advance-fee-rate"]}
+                  />
+                ) : (
+                  <></>
+                )}
+                {showXCCYView && (
+                  <ExchangeRate
+                    selectedFromAccount={selectedFromAccount}
+                    selectedTo={selectedPayee}
+                    transferData={transferData}
+                  />
+                )}
+                <ScheduleAndNotes notes={notes} notesChange={textareaChange} maxLength={35} setNotesValid={setIsNotesValid} />
+                {popLength === 1 ? (
+                  <div className="pop-container pop">
+                    <div className="ftm-title">
+                      <p className="ftm-label">
+                        {" "}
+                        {intl.formatMessage({ id: "pay.transfer.purpose" })}
+                      </p>
+                    </div>
+                    <p className="label-pop">
+                      {purposeOfTransfer?.["pop-desc"]}
+                    </p>
+                  </div>
+                ) : (
+                  <PurposeOfTransfer
+                    purposeOfTransfers={purposeOfTransfers}
+                    setPurposeOfTransfer={setPurposeOfTransfer}
+                    actionOnPOT={actionOnPOT}
+                    beneName={beneName}
+                    beneErrorStatus={beneErrorStatus}
+                  />
+                )}
+                {!isCashAdvanceFlow &&
+                selectedPayee &&
+                selectedPayee["payee-type"] === "IBPAYEE" ? (
+                  <>
+                    {selectedFromAccount?.["currency-code"] === localCurrency &&
+                    selectedPayee?.["acct-currency"] === localCurrency ? (
+                      <>
+                        {alertInfo !== "" && (
+                          <p className="transfer-info">{`Note: ${alertInfo}`}</p>
+                        )}
+                      </>
+                    ) : selectedPayee["acct-type-code"] !== "CC" ? (
+                      <FundTransferMode
+                        showReadNotes={showReadNotes}
+                        showNotes={showNotes}
+                        onModalClosed={onModalClosed}
+                        currentFundTransferMode={currentFundTransferMode}
+                        setPaidByType={setPaidByType}
+                        setCurrentFundTransferMode={setCurrentFundTransferMode}
+                        showImmediate={
+                          selectedFromAccount?.["currency-code"] ===
+                            localCurrency &&
+                          selectedPayee?.["acct-currency"] === localCurrency
+                        }
+                        transMaxLimit={ltMaxLimitImmdMode}
+                      />
+                    ) : (
+                      <></>
+                    )}
+                  </>
+                ) : (
+                  <></>
+                )}
+                {showBankCharges ? (
+                  <BankChargesLT
+                    paidByType={paidByType}
+                    paidTypeByMe={PAID_TYPE.PAID_BY_ME}
+                    paidTypeByBoth={PAID_TYPE.PAID_BY_BOTH}
+                    paidTypeByRecepient={PAID_TYPE.PAID_BY_RECEPIENT}
+                    transferData={transferData}
+                    currentFundTransferMode={currentFundTransferMode}
+                    setPaidByType={setPaidByType}
+                    showPaidByMe={settlementType != "WSI"}
+                    isIbccFlow={selectedPayee["payee-type"] === "IBPAYEE" && selectedPayee["acct-type-code"] === "CC"} immdFundTransferType={""}                  />
+                ) : (
+                  <></>
+                )}
+                {!isCashAdvanceFlow ? <FraudsterNote /> : <></>}
+                <ImportantNotice
+                  content={
+                    selectedPayee && selectedPayee["payee-type"] === "IBPAYEE"
+                      ? intl.formatMessage({
+                          id: "pay.transfer.local.transfer.important.notes.ibft",
+                        })
+                      : intl.formatMessage({
+                          id: "pay.transfer.local.transfer.important.notes.tpft",
+                        })
+                  }
+                  transMaxLimit={ltMaxLimitImmdMode}
+                />
+              </div>
+            </AccordionItem>
+          </Accordion>
+        </div>
+        <Footer
+          currentStep={currentStep}
+          onAddPayee={onAddPayee}
+          onSubmitTrasfer={debouncedSubmitHandler}
+          isValid={isValid}
+          showFooter={!isPurposeOfTransferOpen && !showNotes}
+        />
+      </div>
+      {isReview ? (
+        <Review
+          beneName={beneName}
+          isCashAdvanceFlow={isCashAdvanceFlow}
+          transferData={transferData}
+          otherData={otherData}
+          module="LT"
+          onCloseClicked={function (): void {
+            setReviewToogle(!isReview);
+            setSwipeDisabled(!isSwipeDisabled);
+          }}
+        ></Review>
+      ) : (
+        <></>
+      )}
+      {isLoadingScreen ? <ModalSpinner /> : <></>}
+      {snmStatus && (
+        <Modal
+          open={snmStatus}
+          modalClassName="snm-modal"
+          buttons={
+            <>
+              <ModalButton onClick={paymentCallTrigger} btnClassName="snm-btn">
+                Continue
+              </ModalButton>
+              <ModalButton
+                onClick={() => {
+                  setSnmStatus(false);
+                }}
+                btnClassName="snm-btn"
+              >
+                Cancel
+              </ModalButton>
+            </>
+          }
+        >
+          <div className="warningIcon">
+            <ProtonIcon
+              name="warning-circle"
+              width="50px"
+              height="50px"
+              color="blue"
+            />
+          </div>
+          <h4 className="snm-content">
+            {intl.formatMessage({ id: "pay.transfer.local.serverdownmessage" })}
+            <br />
+            {intl.formatMessage({
+              id: "pay.transfer.local.serverdownmessage.continue",
+            })}
+          </h4>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+export default LocalTransferScreen;
