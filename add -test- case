@@ -1,53 +1,386 @@
-import { fetchBeneName } from "../path-to-your-function"; // Adjust import path
-import { server } from "../mocks/server";
+import React from "react";
+import { IntlProvider } from "react-intl";
+import { HashRouter, useLocation } from "react-router-dom";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { act } from "react-dom/test-utils";
 import { rest } from "msw";
+import { renderHook } from "@testing-library/react-hooks";
 
-// Mock setState functions
-const setBeneName = jest.fn();
-const setBeneErrorStatus = jest.fn();
+import { useAuth } from "../../../../context/auth-context";
+import useTmx from "../../../../hooks/useTmx";
+import translationsForUsersLocale from "../../../../../translations/en_ae.json";
+import LocalTransferScreen from "../local-transfer";
+import {
+  casasData,
+  payeeDetails,
+  cppPayments,
+  purposeOfTranserOpt,
+  cardsData,
+  individualCardData,
+  payeeDetail,
+  coolingPeriod,
+} from "../../../../../mocks/data/mockdata";
+import { numberWithCommas } from "../../../../utils";
+import { server } from "../../../../../mocks/server";
+import { QueryParamsContext } from "../../../../context/QueryParamsContext";
 
-// Mock api object
-jest.mock("../path-to-api", () => ({
-  post: jest.fn(),
-}));
+const localCurrency = "AED";
+const cardsMock = cardsData[0]["card-num"];
+const mockPuposeKey = purposeOfTranserOpt[0]["pop-desc"];
+const payeeMock = payeeDetails[0]["id"];
+const apiUrl =
+  process.env.NODE_ENV === "test"
+    ? `http://localhost:4000/api/`
+    : `${window.origin}/retail/api/v3/`;
 
-import api from "../path-to-api";
+const handlers = [
+  rest.get(`${apiUrl}cpp-rdm/references/AE?filter[category]=COOLING_PERIOD&filter[key]=COOLING_PERIOD_HOURS`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: coolingPeriod,
+      })
+    );
+  }),
+  rest.get(`${apiUrl}cpp-rdm/pop`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: purposeOfTranserOpt
+      })
+    );
+  }),
+  rest.get(`${apiUrl}credit-cards/${cardsMock}`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: individualCardData,
+      })
+    );
+  }),
+  rest.get(`${apiUrl}cpp-payees/details/${payeeMock}`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: payeeDetail,
+      })
+    );
+  }),
+];
 
-describe("fetchBeneName", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+jest.useFakeTimers();
+jest.spyOn(global, "setTimeout");
+
+jest.mock("react-router-dom", () => {
+  return {
+    ...jest.requireActual("react-router-dom"),
+    useLocation: jest.fn(),
+  };
+});
+
+jest.mock("../../../../context/auth-context");
+jest.mock("../../../../hooks/useTmx");
+
+beforeEach(() => {
+  (useAuth as jest.Mock).mockReturnValue({
+    token:
+      "eyJhbGciOiJSUzI1NiJ9.eyJqdGkiOiI2N2Q4Y2ZkNjcxZWVjMDZiODQ5ODgzYmU5MjNkZTgiLCJjbGllbnRfaWQiOiJJQkFOS0lORyIsImlhdCI6MTY3ODMwMDI3MiwiZXhwIjoxNjc4MzAwODcyLCJpc3MiOiJDU0wtQVVUSCIsInNjb3BlIjpbInJlZnJlc2hUb2tlbiJdLCJhdWQiOiJDU0wtQVVUSCIsImV4dHJhX3Byb3BlcnRpZXMiOnsianNlc3Npb25faWQiOiIxMjMiLCJkZXZpY2VfcmVnaXN0ZXJlZCI6ImZhbHNlIiwicHJlZmVycmVkX290cF90eXBlIjoiU1QifSwiZ3JhbnRfdHlwZSI6InVybjppZXRmOnBhcmFtczpvYXV0aDpncmFudC10eXBlOmp3dC1iZWFyZXIiLCJjc2xfdHJhY2tpbmdfaWQiOiI0MjZlZjUwZi0zNTZiLTQ2MTgtODI1ZS02ZDdhN2QxZmIzM2QifQ.UTSOKNvrspr2Z0Nt9spKUT_WAUIsIgP4mcuUhx42_GVbPPWaziamcvqn6ZzXUfNMmw9BD1SbjQqhvZKzwey15VbLh1isqLFcXzu4NQn_pATDjKSyM2DK0ekwp8UTuvb0_m2IYMgzEJGkF4T0ikhS2LnAlm6TKOKX7tTuenVhG1lwOZ-PmMqo4uibNY_XGVLfPiC-rZ4rv1zzAjsmn9Nwy4EXlwsEQAex97AteLaRJXrOs6TARGnqMMSbcodemvpm9SkmTkm8dbPEBh-tJD7qGATz9kTr7DKCKOeiNJOI_0By6A678bKVeUdCOHFVWz_froaExerJwJDl8ztykhCnQg",
+    interceptorConfigured: true,
+    deviceId: "",
+    appVersionNumber: "",
+  });
+});
+
+beforeEach(() => {
+  (useTmx as jest.Mock).mockReturnValue({
+    isProfilingComplete: true,
+  });
+});
+
+const contextValue = {
+  entryPageId: "/",
+  setEntryPageId: () => {},
+  transferToken: "",
+  mobileAccessToken: "",
+  mobileRefreshToken: "",
+  country: "AE",
+  setCountry: () => {},
+  sapp: "",
+  setSapp: () => {},
+};
+
+const renderLocalTransferSCreen = () => {
+  render(
+    <QueryParamsContext.Provider value={contextValue}>
+      <HashRouter>
+        <IntlProvider locale={"en"} messages={translationsForUsersLocale}>
+          <LocalTransferScreen />
+        </IntlProvider>
+      </HashRouter>
+    </QueryParamsContext.Provider>
+  );
+};
+
+const getPurposeOfTransfer = async () => {
+  const dropdown = await screen.getByTestId("label-purpose-of-transf");
+  await act(async () => {
+    await fireEvent.click(dropdown);
+  });
+  expect(await dropdown).toBeInTheDocument();
+
+  const searchPOTInput = await screen.getByTestId("search-POT-input");
+  expect(await searchPOTInput).toBeInTheDocument();
+  await act(async () => {
+    await fireEvent.change(searchPOTInput, {
+      target: { value: mockPuposeKey },
+    });
+  });
+  expect(await searchPOTInput).toHaveValue(mockPuposeKey);
+
+  const foundOptions = (await screen.getAllByTestId(
+    "pop-options"
+  )[0]) as HTMLInputElement;
+  expect(await foundOptions).toBeInTheDocument();
+  await act(async () => {
+    await fireEvent.click(foundOptions);
   });
 
-  it("should setBeneName when response has customer-name and status-cd is 62", async () => {
-    api.post.mockResolvedValue({
-      data: { "customer-name": "John Doe", "status-cd": 62 },
+  // expect(
+  //   await screen.getAllByPlaceholderText(`${mockPuposeKey}`)[0]
+  // ).toBeInTheDocument();
+};
+
+describe("Render the Local Transfer screen with mock data", () => {
+  const useLocationMock = useLocation as jest.Mock;
+  // const { result } = renderHook(() => useTmx("123456"));
+  const accNum = casasData[0]["attributes"]["account-number"];
+  const accDescription = casasData[0]["attributes"]["product-description"];
+  const mockPayeeName = payeeDetails[0]["attributes"]["nick-name"]
+    ? payeeDetails[0]["attributes"]["nick-name"]
+    : payeeDetails[0]["attributes"]["first-name"];
+  const mockCurrencyCode = casasData[0]["attributes"]["currency-code"];
+  const mockFxRate = cppPayments.data.attributes["fx-rate"];
+  const mockConvertedAmt = cppPayments.data.attributes["converted-amt"];
+
+  it("Checks if the local transfer label renders on UI", async () => {
+    server.use(...handlers);
+    useLocationMock.mockReturnValue({
+      state: {
+        payeeDetail: {
+          id: 1,
+          payeeNameValue: "",
+          selectedBankOption: { "bank-name": "" },
+          acctNumber: "",
+          selectedCcy: "AED",
+          selectedPayeeValue: "TPPAYEE",
+        },
+      },
     });
+    await act(async () => renderLocalTransferSCreen());
 
-    await fetchBeneName("123456");
+    expect(await screen.getByTestId("label-lt-lg-header")).toHaveTextContent(
+      /Local Transfer/i
+    );
 
-    expect(setBeneName).toHaveBeenCalledWith("John Doe");
-    expect(setBeneErrorStatus).not.toHaveBeenCalled();
+    expect(await screen.getByTestId("step-from")).toBeInTheDocument();
+    expect(await screen.getAllByText(/Salary Account/i)[0]).toBeInTheDocument();
+    expect(await screen.getAllByText(`${accNum}`)[0]).toBeInTheDocument();
   });
 
-  it("should setBeneErrorStatus when status-cd is not 62", async () => {
-    api.post.mockResolvedValue({
-      data: { "status-cd": 40 },
+  it("Checks if the FROM selections happnes on click of account", async () => {
+    server.use(...handlers);
+    useLocationMock.mockReturnValue({
+      state: {
+        payeeDetail: {
+          id: 1,
+          payeeNameValue: "",
+          selectedBankOption: { "bank-name": "" },
+          acctNumber: "",
+          selectedCcy: "AED",
+          selectedPayeeValue: "TPPAYEE",
+        },
+      },
     });
+    await act(async () => renderLocalTransferSCreen());
+    const stepTile = screen.getByTestId("step-from");
+    expect(await stepTile).toBeInTheDocument();
+    expect(await stepTile).toHaveTextContent(/accounts/i);
+    const accName = screen.getAllByText(`${accNum}`)[0];
+    expect(await accName).toBeInTheDocument();
+    fireEvent.click(accName);
 
-    await fetchBeneName("987654");
-
-    expect(setBeneErrorStatus).toHaveBeenCalledWith(40);
-    expect(setBeneName).not.toHaveBeenCalled();
+    const formElem = screen.getByTestId("sltd-acc-name");
+    expect(await formElem).toBeInTheDocument();
+    expect(await formElem).toHaveTextContent(
+      `${accDescription} ${accNum.slice(-4)}`
+    );
   });
 
-  it("should handle API errors and setBeneErrorStatus", async () => {
-    api.post.mockRejectedValue({
-      errors: [{ status: "500" }],
+  it("Checks if the accounts selections flow work for user", async () => {
+    server.use(...handlers);
+    useLocationMock.mockReturnValue({
+      state: {
+        payeeDetail: {
+          id: 1,
+          payeeNameValue: payeeDetails[3]["attributes"]["nick-name"]
+            ? payeeDetails[3]["attributes"]["nick-name"]
+            : payeeDetails[3]["attributes"]["first-name"],
+          selectedBankOption: { "bank-name": "Islamic bank" },
+          acctNumber: "",
+          selectedCcy: "AED",
+          selectedPayeeValue: "TPPAYEE",
+        },
+      },
+    });
+    await act(async () => await renderLocalTransferSCreen());
+    const stepTile = screen.getByTestId("step-from");
+    expect(await stepTile).toBeInTheDocument();
+    expect(await stepTile).toHaveTextContent(/accounts/i);
+    const accName = screen.getAllByText(`${accNum}`)[0];
+    expect(await accName).toBeInTheDocument();
+
+    const ccCardDetails = screen.getAllByText(cardsMock)[0];
+    expect(await ccCardDetails).toBeInTheDocument();
+
+    await act(async () => {
+      await fireEvent.click(accName);
     });
 
-    await fetchBeneName("123456");
+    // OTHER BANK UAE PAYEES
 
-    expect(setBeneErrorStatus).toHaveBeenCalledWith("500");
-    expect(setBeneName).not.toHaveBeenCalled();
+    const formElem = screen.getByTestId("sltd-acc-name");
+    expect(await formElem).toBeInTheDocument();
+    expect(await formElem).toHaveTextContent(
+      `${accDescription} ${accNum.slice(-4)}`
+    );
+    const stepTileTo = screen.getByTestId("step-to");
+    expect(await stepTileTo).toHaveTextContent(
+      /Which account would you like to transfer to?/i
+    );
+
+    const payeeNameInput = screen.getByTestId("search-payee-input");
+    await act(async () => {
+      await fireEvent.change(payeeNameInput, {
+        target: { value: mockPayeeName },
+      });
+    });
+    expect(await payeeNameInput).toHaveValue(mockPayeeName);
+
+    const selectPayeeBtn = screen.getByTestId("sclt-acc");
+    expect(await selectPayeeBtn).toBeInTheDocument();
+    await act(async () => {
+      await fireEvent.click(selectPayeeBtn);
+    });
+
+    const toElem = screen.getByTestId("sltd-payee-name");
+    expect(await toElem).toBeInTheDocument();
+
+    const transferAmt = screen.getByTestId("input-money-dec");
+    expect(transferAmt).toBeInTheDocument();
+    const mockMoneyVal = 457;
+    await act(async () => {
+      await fireEvent.change(transferAmt, {
+        target: { value: `${mockMoneyVal}` },
+      });
+    });
+
+    expect(await transferAmt).toHaveValue(mockMoneyVal.toString());
+    expect(screen.getByTestId("label-fund-transfer")).toHaveTextContent(
+      /fund transfer mode/i
+    );
+    expect(
+      await screen.getByTestId("normal-curr-transf-md-radio-btn-wrap")
+    ).toBeInTheDocument();
+    expect(await screen.getByTestId("normal-curr-transf-md-radio-btn-wrap"))
+      .toHaveStyle(`
+    border: 1px solid var(--proton-global-color-blue);
+`);
+
+    // jest.useFakeTimers();
+    setTimeout(async () => {
+      expect(await screen.getByTestId("curr-code-fx-rate")).toBeInTheDocument();
+      expect(await screen.getByTestId("curr-code-fx-rate")).toHaveTextContent(
+        `${mockCurrencyCode} ${mockFxRate}`
+      );
+      expect(await screen.getByTestId("indicative-amount")).toHaveTextContent(
+        "Indicative Amount = " +
+          `${mockCurrencyCode} ${numberWithCommas(mockConvertedAmt)}`
+      );
+    }, 2000);
+    // jest.runAllTimers();
+
+    await act(async () => {
+      await getPurposeOfTransfer();
+    });
+
+    const continueBtn = screen.getByTestId("footer-continue-btn-lg");
+    expect(await continueBtn).toBeInTheDocument();
+    waitFor(async () => {
+      expect(await continueBtn).toHaveAttribute("enabled");
+
+      fireEvent.click(continueBtn);
+      expect(screen.findAllByText(/review/)).toBeInTheDocument();
+
+      // Check for mock data on screen
+      expect(screen.findAllByText(accNum)).toBeInTheDocument();
+      expect(screen.findAllByText(mockPayeeName)).toBeInTheDocument();
+      expect(screen.findAllByText(mockPuposeKey)).toBeInTheDocument();
+
+      const agreeTncBtn = screen.getByTestId("agree-to-tnc-checkbox");
+      expect(await agreeTncBtn).toBeInTheDocument();
+      fireEvent.click(agreeTncBtn);
+
+      const confirmDetailsBtn = screen.getByTestId("btn-confirm-details");
+      expect(await confirmDetailsBtn).toBeInTheDocument();
+      expect(await confirmDetailsBtn).toHaveAttribute("enabled");
+    });
+
+    // CREDIT CARDS
+    await act(async () => {
+      await fireEvent.click(ccCardDetails);
+    });
+    server.use(...handlers);
+
+    const mockPayeeName2 = payeeDetails[3]["attributes"]["nick-name"]
+      ? payeeDetails[3]["attributes"]["nick-name"]
+      : payeeDetails[3]["attributes"]["first-name"];
+    const cashAdvanceFeeRate = individualCardData["cash-advance-fee-rate"];
+
+    await act(async () => {
+      await fireEvent.change(payeeNameInput, {
+        target: { value: mockPayeeName2 },
+      });
+    });
+    expect(await payeeNameInput).toBeInTheDocument();
+    expect(await payeeNameInput).toHaveValue(mockPayeeName2);
+
+    const payeeNameWrapper = screen.getByTestId("payee-name");
+    expect(await payeeNameWrapper).toHaveTextContent(mockPayeeName2);
+
+    await act(async () => {
+      await fireEvent.click(payeeNameWrapper);
+    });
+
+    const selectedPayeeName = screen.getByTestId("sltd-payee-name");
+    expect(await selectedPayeeName).toHaveTextContent(mockPayeeName2);
+
+    await act(async () => {
+      await getPurposeOfTransfer();
+    });
+    const cashAdvanceLabels = screen.getByTestId("label-cash-advc");
+    expect(await cashAdvanceLabels).toBeInTheDocument();
+
+    expect(await cashAdvanceLabels).toHaveTextContent(
+      /you are about to execute a Cash Advance./i
+    );
+    expect(await screen.getByTestId("per-day-text")).toHaveTextContent(
+      `${(cashAdvanceFeeRate / 12).toFixed(2)} % per month`
+    );
   });
 });
