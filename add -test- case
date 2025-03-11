@@ -1,0 +1,53 @@
+import { fetchBeneName } from "../path-to-your-function"; // Adjust import path
+import { server } from "../mocks/server";
+import { rest } from "msw";
+
+// Mock setState functions
+const setBeneName = jest.fn();
+const setBeneErrorStatus = jest.fn();
+
+// Mock api object
+jest.mock("../path-to-api", () => ({
+  post: jest.fn(),
+}));
+
+import api from "../path-to-api";
+
+describe("fetchBeneName", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should setBeneName when response has customer-name and status-cd is 62", async () => {
+    api.post.mockResolvedValue({
+      data: { "customer-name": "John Doe", "status-cd": 62 },
+    });
+
+    await fetchBeneName("123456");
+
+    expect(setBeneName).toHaveBeenCalledWith("John Doe");
+    expect(setBeneErrorStatus).not.toHaveBeenCalled();
+  });
+
+  it("should setBeneErrorStatus when status-cd is not 62", async () => {
+    api.post.mockResolvedValue({
+      data: { "status-cd": 40 },
+    });
+
+    await fetchBeneName("987654");
+
+    expect(setBeneErrorStatus).toHaveBeenCalledWith(40);
+    expect(setBeneName).not.toHaveBeenCalled();
+  });
+
+  it("should handle API errors and setBeneErrorStatus", async () => {
+    api.post.mockRejectedValue({
+      errors: [{ status: "500" }],
+    });
+
+    await fetchBeneName("123456");
+
+    expect(setBeneErrorStatus).toHaveBeenCalledWith("500");
+    expect(setBeneName).not.toHaveBeenCalled();
+  });
+});
