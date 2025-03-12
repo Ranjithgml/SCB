@@ -1,0 +1,582 @@
+import React from "react";
+import { IntlProvider } from "react-intl";
+import { HashRouter } from "react-router-dom";
+import { fireEvent, render, screen,waitFor } from "@testing-library/react";
+import { act } from "react-dom/test-utils";
+import { rest } from "msw";
+import { useAuth } from "../../../../context/auth-context";
+import useTmx from "../../../../hooks/useTmx";
+import translationsForUsersLocale from "../../../../../translations/en_ae.json";
+import AddPayee from "../add-payee";
+import { api } from "../../../../../kitsu";
+import {
+  cardsData,
+  individualCardData,
+  payeeTypes,
+  ctryData,
+  bankData,
+  currencies,
+} from "../../../../../mocks/data/mockdata";
+import { server } from "../../../../../mocks/server";
+import { QueryParamsContext } from "../../../../context/QueryParamsContext";
+// import { isWeb } from "../../../../utils";
+import userEvent from "@testing-library/user-event";
+
+const cardsMock = cardsData[0]["card-num"];
+const mockPuposeKey = ctryData.data.details[0]["description"];
+const bankMock = bankData[0].attributes["bank-name"];
+const currMock = currencies.details[0].value;
+
+const apiUrl =
+  process.env.NODE_ENV === "test"
+    ? `http://localhost:4000/api/`
+    : `${window.origin}/retail/api/v3/`;
+
+const handlers = [
+  rest.get(`${apiUrl}cpp-rdm/references/AE`, (req, res, ctx) => {
+    const pageParams = new URLSearchParams(window.location.search);
+    pageParams.set("filter[category]", "PAYEETYPE");
+    if (req.url.searchParams.get("filter[category]") === "PAYEETYPE") {
+      return res(
+        ctx.status(200),
+        ctx.json({
+          data: payeeTypes,
+        })
+      );
+    }
+  }),
+  rest.get(`${apiUrl}cpp-rdm/references/AE`, (req, res, ctx) => {
+    const pageParams = new URLSearchParams(window.location.search);
+    pageParams.set("filter[key]", "COUNTRY");
+    if (req.url.searchParams.get("filter[category]") === "COUNTRY") {
+      return res(
+        ctx.status(200),
+        ctx.json({
+          data: ctryData.data.details.filter(
+            (purpose: any) =>
+              purpose &&
+              purpose["pop-desc"]
+                .toLowerCase()
+                .includes(mockPuposeKey.toLocaleLowerCase())
+          ),
+        })
+      );
+    }
+  }),
+  rest.get(`${apiUrl}credit-cards/${cardsMock}`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: individualCardData,
+      })
+    );
+  }),
+  rest.get(`${apiUrl}cpp-rdm/banks`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: bankData,
+      })
+    );
+  }),
+  rest.get(`${apiUrl}cpp-rdm/references/AE`, (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: currencies,
+      })
+    );
+  }),
+  // rest.post(
+  //   `${apiUrl}cpp-account-proxies`,
+  //   (req, res, ctx) => {
+  //     return res(ctx.status(201), ctx.json({ data: {
+  //       "id": "M20211124SCBLNPKAGSLUP92579868029A2",
+  //       "type": "cpp-account-proxies",
+  //       "links": {
+  //           "self": "/retail/api/v3/cpp-account-proxies/M20211124SCBLNPKAGSLUP92579868029A2"
+  //       },
+  //       "attributes": {
+  //           "status-cd": "62",
+  //           "account-no": "AE100330000010410000108",
+  //           "response-time": 1739529666882,
+  //           "customer-name": "ANXXXX NAVXXXX",
+  //           "status": "ACTC",
+  //           "alias-registration-status": false,
+  //           "acct-registration-status": false,
+  //           "alta-completion-status": false,
+  //           "cust-reg-completion-status": false,
+  //           "country-code": "AE",
+  //           "host-message": "Success",
+  //           "optOut": false,
+  //           "defaultAccount": false
+  //       },
+  //       "relationships": {}
+  //   } }));
+  //   }
+  // ),
+];
+const handlersSuccess = [
+  rest.post(
+    `${apiUrl}cpp-account-proxies`,
+    (req, res, ctx) => {
+      return res(ctx.status(200), ctx.json({ data: {
+        "id": "M20211124SCBLNPKAGSLUP92579868029A2",
+        "type": "cpp-account-proxies",
+        "links": {
+            "self": "/retail/api/v3/cpp-account-proxies/M20211124SCBLNPKAGSLUP92579868029A2"
+        },
+        "attributes": {
+            "status-cd": "62",
+            "account-no": "AE100330000010410000108",
+            "response-time": 1739529666882,
+            "customer-name": "ANXXXX NAVXXXX",
+            "status": "ACTC",
+            "alias-registration-status": false,
+            "acct-registration-status": false,
+            "alta-completion-status": false,
+            "cust-reg-completion-status": false,
+            "country-code": "AE",
+            "host-message": "Success",
+            "optOut": false,
+            "defaultAccount": false
+        },
+        "relationships": {}
+    } }));
+    }
+  ),
+];
+const handlersFailureCode = [
+  rest.post(
+    `${apiUrl}cpp-account-proxies`,
+    (req, res, ctx) => {
+      return res(ctx.status(200), ctx.json({ data: {
+        "id": "M20211124SCBLNPKAGSLUP92579868029A2",
+        "type": "cpp-account-proxies",
+        "links": {
+            "self": "/retail/api/v3/cpp-account-proxies/M20211124SCBLNPKAGSLUP92579868029A2"
+        },
+        "attributes": {
+            "status-cd": "72",
+            "account-no": "AE100330000010410000108",
+            "response-time": 1739529666882,
+            "customer-name": "ANXXXX NAVXXXX",
+            "status": "ACTC",
+            "alias-registration-status": false,
+            "acct-registration-status": false,
+            "alta-completion-status": false,
+            "cust-reg-completion-status": false,
+            "country-code": "AE",
+            "host-message": "Success",
+            "optOut": false,
+            "defaultAccount": false
+        },
+        "relationships": {}
+    } }));
+    }
+  ),
+];
+
+const handlersFailure = [
+  rest.post(
+    `${apiUrl}cpp-account-proxies`,
+    (req, res, ctx) => {
+      return res(ctx.status(504), ctx.json({errors: [
+        {
+          "id": "f1f1c174-6a30-4f83-9a5c-179070a97887",
+          "status": "500",
+          "code": "CSL-100",
+          "title": "Error Occurred",
+          "detail": "An error occurred. Please contact support with the error ID"
+      }
+      ]}));
+    }
+  ),
+];
+jest.useFakeTimers();
+jest.spyOn(global, "setTimeout");
+
+jest.mock("react-router-dom", () => {
+  return {
+    ...jest.requireActual("react-router-dom"),
+    useLocation: jest.fn(),
+  };
+});
+// jest.mock("./api", () => ({
+//   post: jest.fn(),
+// }));
+
+jest.mock("../../../../context/auth-context");
+jest.mock("../../../../hooks/useTmx");
+
+beforeEach(() => {
+  (useAuth as jest.Mock).mockReturnValue({
+    to:
+      "ey",
+    interceptorConfigured: true,
+    deviceId: "",
+    appVersionNumber: "",
+  });
+});
+
+jest.mock("../../../../utils", () => ({
+  isWeb: jest.fn().mockReturnValue(false),
+  isIOS: jest.fn().mockReturnValue(false),
+  getApiNamespace: jest.fn().mockReturnValue(process.env.REACT_APP_CPP_URL_V4),
+}));
+
+beforeEach(() => {
+  (useTmx as jest.Mock).mockReturnValue({
+    isProfilingComplete: true,
+  });
+});
+
+const contextValue = {
+  entryPageId: "/",
+  setEntryPageId: () => {},
+  transferToken: "",
+  mobileAccessToken: "",
+  mobileRefreshToken: "",
+  country: "AE",
+  setCountry: () => {},
+  sapp: "",
+  setSapp: () => {},
+};
+
+const renderAddPayee = () => {
+  render(
+    <QueryParamsContext.Provider value={contextValue}>
+      <HashRouter>
+        <IntlProvider locale={"en"} messages={translationsForUsersLocale}>
+          <AddPayee />
+        </IntlProvider>
+      </HashRouter>
+    </QueryParamsContext.Provider>
+  );
+};
+
+const getPayeeTypes = async () => {
+  const dropdown = await screen.getByTestId("payee-type-options");
+  await act(async () => {
+    await fireEvent.click(dropdown);
+  });
+  expect(await dropdown).toBeInTheDocument();
+  const foundOptions = (await screen.getByTestId(
+    "payee-type-options"
+  )) as HTMLInputElement;
+  expect(await foundOptions).toBeInTheDocument();
+  await act(async () => {
+    await fireEvent.click(foundOptions);
+  });
+};
+
+const optionSelected = async (index) => {
+  const optionList = screen.getByTestId("payee-type-list") as HTMLInputElement;
+  expect(await optionList).toBeInTheDocument();
+  console.log("Found", optionList);
+  await act(async () => {
+    await fireEvent.click(optionList);
+  });
+  const firstOption = await screen.getAllByTestId("payee-select");
+  await expect(firstOption[index] as HTMLElement).toBeInTheDocument();
+  await act(async () => {
+    await fireEvent.click(firstOption[index]);
+  });
+
+  // await act(async () => {
+  //   await userEvent.selectOptions(
+  //     screen.getByRole("combobox"),
+  //     optionList[index]
+  //   );
+  // });
+  // await act(async () => {
+  //   expect((optionList[index] as HTMLOptionElement).selected).toBe(true);
+  // });
+};
+
+const getCountryData = async () => {
+  const cntryBtn = screen.getByPlaceholderText("Select Country");
+  await act(async () => {
+    await fireEvent.click(cntryBtn);
+  });
+  const ctrySearchText = screen.getByTestId("country-input");
+  await act(async () => {
+    await fireEvent.change(ctrySearchText, {
+      target: { value: "" },
+    });
+  });
+  const countryDropdown = await screen.getAllByTestId("country-select")[0];
+  await fireEvent.keyDown(countryDropdown, {
+    key: "Enter",
+    code: "Enter",
+  });
+};
+
+const currencyView = async () => {
+  const currBtn = await screen.getByTestId("currency-id");
+  await act(async () => {
+    await fireEvent.click(currBtn);
+  });
+  const currSearchText = screen.getByTestId("curr-input");
+  await act(async () => {
+    await fireEvent.change(currSearchText, {
+      target: { value: currMock },
+    });
+  });
+  expect(await currSearchText).toHaveValue(currMock);
+
+  const currDropdown = await screen.getByTestId("curr-select");
+  await fireEvent.keyDown(currDropdown, {
+    key: "Enter",
+    code: "Enter",
+  });
+  expect(await currDropdown).toHaveValue(currMock);
+};
+
+const bankScreen = async () => {
+  const bnkBtn = screen.getByPlaceholderText("Select Bank");
+  await act(async () => {
+    await fireEvent.click(bnkBtn);
+  });
+  const bankSearchText = screen.getByTestId("bank-input");
+  await act(async () => {
+    await fireEvent.change(bankSearchText, {
+      target: { value: bankMock },
+    });
+  });
+  expect(await bankSearchText).toHaveValue(bankMock);
+  const bankDropdown = await screen.getByTestId("bank-select");
+  await fireEvent.keyDown(bankDropdown, {
+    key: "Enter",
+    code: "Enter",
+  });
+  expect(await bankDropdown).toHaveValue(bankMock[0]["attributes"]);
+};
+
+describe("Render the Add payee screen with mock data", () => {
+  // const { result } = renderHook(() => useTmx("123456"));
+
+  it("Checks if the next button exists in the document", async () => {
+    await act(async () => await renderAddPayee());
+    const nextBtn = screen.getByTestId("next-button");
+    expect(nextBtn).toHaveTextContent(/Next/i);
+    expect(nextBtn).toBeDisabled();
+  });
+
+  it("Checks if the back button exists in the document", async () => {
+    await act(async () => await renderAddPayee());
+    const backBtn = screen.getByTestId("back-button");
+    expect(backBtn).toHaveTextContent(/Back/i);
+    expect(backBtn).toBeEnabled();
+  });
+  it("Checks if the back button exists in the document", async () => {
+    await act(async () => await renderAddPayee());
+    const backBtn = screen.getByTestId("go-to-home");
+    expect(await backBtn).toHaveTextContent(/Add Local Payee/i);
+    expect(await backBtn).toBeInTheDocument();
+    await act(async () => {
+      await fireEvent.click(backBtn);
+    });
+  });
+
+  it("select the first payee option", async () => {
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(0);
+    });
+    await act(async () => {
+      await bankScreen();
+    });
+    await act(async () => {
+      await getCountryData();
+    });
+    const currLabel = screen.getByTestId("curr-label");
+    expect(await currLabel).toBeInTheDocument();
+  });
+
+  it("select the second payee option and check all the elements", async () => {
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("search-payee-input");
+    expect(await payeeName).toBeInTheDocument();
+    const accName = screen.getByPlaceholderText("Please enter payee IBAN");
+    expect(await accName).toBeInTheDocument();
+    expect(
+      await screen.getByPlaceholderText("Address Line1 *")
+    ).toBeInTheDocument();
+    expect(
+      await screen.getByPlaceholderText("Address Line2")
+    ).toBeInTheDocument();
+    expect(
+      await screen.getByPlaceholderText("Address Line3")
+    ).toBeInTheDocument();
+    expect(
+      await screen.getByPlaceholderText("Please enter short name")
+    ).toBeInTheDocument();
+    expect(
+      await screen.getByPlaceholderText("Please enter payee email.")
+    ).toBeInTheDocument();
+    expect(await screen.getByTestId("mail-text")).toHaveTextContent(
+      /Do you want to send email when a transfer is made?/i
+    );
+  });
+
+  it("select the Third payee option", async () => {
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(2);
+    });
+    await act(async () => {
+      await currencyView();
+    });
+  });
+
+  it("should initialize with empty values", async () => {
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("iban-input");
+    expect(await payeeName).toBeInTheDocument();
+  });
+
+  it("should update iban focus value on focus", async () => {
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.focus(payeeName, { target: { value: "New Focus Value" } });
+    expect(await payeeName).toHaveValue("New Focus Value");
+  });
+
+  it("should handle success api call", async () => {
+    server.use(...handlersSuccess);
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: "New Value" } })
+  });
+
+  
+
+  it("should handle Failure api call", async () => {
+    server.use(...handlersFailure);
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: "New Value" } })
+
+  });
+
+  it("should handle Failure with code api call", async () => {
+    server.use(...handlersFailureCode);
+    server.use(...handlers);
+    await act(async () => await renderAddPayee());
+    await act(async () => {
+      await optionSelected(1);
+    });
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: "New Value" } })
+
+  });
+
+
+
+  
+
+// it("should render Unable to fetch message", async () => {
+  //   api.post.mockResolvedValueOnce({data: {"status-code": 45}});
+
+  //   // server.use(...handlers);
+  //   await act(async () => await renderAddPayee());
+  //   await act(async () => {
+  //     await optionSelected(1);
+  //   });
+  // //   const payeeName = screen.getByTestId("iban-input");
+  // //   expect(await payeeName).toBeInTheDocument();
+  // //   await act(async () => {
+  // //     await fireEvent.blur(payeeName);
+  // //   });
+
+  // //   await waitFor(async () => {
+  // //     expect(screen.queryByText("Unable to fetch Beneficiary Name based on the IBAN entered")).not.toBeInTheDocument();
+  // //   });
+
+  // });
+
+  // it("should call handleInputChange when value changes", async () => {
+  //   server.use(...handlers);
+  //   await act(async () => await renderAddPayee());
+  //   await act(async () => {
+  //     await optionSelected(1);
+  //   });
+  //   const payeeName = screen.getByTestId("iban-input");
+
+  //   await fireEvent.change(payeeName, { target: { value: "New Value" } });
+
+  //   expect(await payeeName).toHaveValue("New Value");
+  //   // await waitFor(async () => {
+  //   // expect(await screen.queryByText("Unable to fetch Beneficiary Name based on the IBAN entered")).not.toBeInTheDocument();
+  //   // });
+  // });
+  
+
+  // it("should handle api call", async () => {
+  //   server.use(...handlers);
+  //   api.post.mockResolvedValueOnce({
+  //     data: {"status-code": 62, name: "ranjith"}
+  //   })
+  //   await act(async () => await renderAddPayee());
+  //   await act(async () => {
+  //     await optionSelected(1);
+  //   });
+  //   const payeeName = screen.getByTestId("iban-input");
+
+  //   await fireEvent.change(payeeName, { target: { value: "New Value" } });
+
+  // //   expect(await payeeName).toHaveValue("New Value");
+  //   await waitFor(async () => {
+  //   // expect(await screen.queryByText("Unable to fetch Beneficiary Name based on the IBAN entered")).not.toBeInTheDocument();
+  //   expect(await screen.getByTestId("iban-input")).toHaveValue("New Value");
+  //   expect(await screen.getAllByDisplayValue("ranjith")).toBeInTheDocument()
+  //   });
+  // });
+  
+  // it("should handle success api call", async () => {
+  //   server.use(...handlersSuccess);
+  //   server.use(...handlers);
+  //   await act(async () => await renderAddPayee());
+  //   await act(async () => {
+  //     await optionSelected(1);
+  //   });
+  //   const payeeName = screen.getByTestId("iban-input");
+
+  //   const payeeAccNo = "1234567890";
+  //   const payeeAccNoErrorMessage = ""
+  //   const ibanFocusValue = "987654321"
+  //   const beneErrorStatus = false;
+
+  //   await fireEvent.change(payeeName, { target: { value: payeeAccNo } })
+
+  //   await act(async() =>{
+  //     fireEvent.blur(payeeName, { target: { value: payeeAccNo } })
+  //   })
+
+   
+  // });
+
+});
