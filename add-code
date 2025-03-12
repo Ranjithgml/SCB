@@ -1,0 +1,1112 @@
+import {
+  ProtonButton,
+  ProtonCheckbox,
+  ProtonContainer,
+  ProtonDropdown,
+  ProtonDropdownOption,
+  ProtonIcon,
+  ProtonInput,
+  ProtonModal,
+  ProtonRadioButtonContainer,
+  ProtonUppercase,
+} from "@scb/proton-components-react";
+import React, {
+  ChangeEvent,
+  ReactElement,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import Header from "../../../components/functional/header";
+import { useNavigate } from "react-router-dom";
+import MobileNavigation from "../../../components/generic/mobile-navigation";
+import "./css/add-payee.scss";
+import "./css/desktop-override.scss";
+import RouteConfig from "../../../config/routes";
+import AddReview from "../confirmation-screens/add-confirm-screen";
+import { api } from "../../../../kitsu";
+import { useAuth } from "../../../context/auth-context";
+import ModalSpinner from "../../../components/generic/modal-spinner";
+import { ErrorData, ExitAction, TMXConfig } from "../../../enums/commonType";
+import useTmx from "../../../hooks/useTmx";
+import {
+  isMobileBrowser,
+  isWeb,
+  sortCurrency,
+  truncateExtraSpaces,
+  goBackToHomeScreen,
+} from "../../../utils";
+import { isIOS } from "../../../utils";
+import useValidator from "../../../hooks/useValidator";
+import _ from "lodash";
+import { GlobalErrorContext } from "../../../components/generic/global-error-handling";
+import { useIntl } from "react-intl";
+import configData from "../../../../config.json";
+import { QueryParamsContext } from "../../../context/QueryParamsContext";
+
+interface ComponentState {
+  selectedCtry: any;
+  selectedCcy: any;
+  selectedPayeeType: any;
+  payeeNameValue: string;
+  payeeSrtName: string;
+  selectedBankOption: any;
+  payeeEmailValue: string;
+  emailCheckBox: boolean;
+  addressValue: string;
+  addressOneValue: string;
+  addressTwoValue: string;
+  acctNumber: string;
+  id: string;
+  benificiaryName: string;
+}
+
+const AddPayee = () => {
+  const paramsContext = useContext(QueryParamsContext);
+  const localCurrency = configData[paramsContext["country"]]
+    ? configData[paramsContext["country"]].LocalCurrency
+    : "AED";
+
+  const country = paramsContext["country"];
+  const navigate = useNavigate();
+  const intl = useIntl();
+  const { deviceId, appVersionNumber } = useAuth();
+
+  const [payeeType, setPayeeType] = useState<any>();
+  const [disableCtnButton, setDisableCtnButton] = useState(true);
+  const [bankList, setBankList] = useState<any>();
+  const [selectedBank, setSelectedBank] = useState<any>();
+  const [currencies, setCurrencies] = useState([]);
+  const [selectedCurrency, setSelectedCurrency] = useState("");
+  const [emailChkBox, setEmailChkBox] = useState(false);
+  const [searchBankName, setSearchBankName] = useState("");
+  const [searchCurrency, setSearchCurrency] = useState("");
+  const [isReview, setIsReview] = useState<boolean>(false);
+  const [addData, setAddData] = useState<any>();
+  const [countryList, setCountryList] = useState<any>();
+  const [searchCtry, setSearchCtry] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<any>();
+  const [payeeTypeOptions, setPayeeTypeOptions] = useState([]);
+  const [isLoadingScreen, setLoadingScreen] = useState<boolean>(false);
+  const { setGlobalErrorData } = useContext(GlobalErrorContext);
+  const [tmxPageId, setTmxPageId] = useState<string>("");
+  const [isOpenBankModal, setIsOpenBankModal] = useState<boolean>(false);
+  const [isOpenCurrencyModal, setIsOpenCurrencyModal] =
+    useState<boolean>(false);
+
+  const [isOpenCountryModal, setIsOpenCountryModal] = useState<boolean>(false);
+  const countryRef = useRef<HTMLInputElement>(null);
+  const bankRef = useRef<HTMLInputElement>(null);
+  const curryRef = useRef<HTMLInputElement>(null);
+
+  const [isOpenPayeeTypeModel, setIsOpenPayeeTypeModel] =
+    useState<boolean>(false);
+  const payeeTypeRef = useRef<HTMLInputElement>(null);
+  const [searchPayeeType, setSearchPayeeType] = useState("");
+  const coolingPeriod:boolean = configData[country]?.coolingPeriod;
+  const [ibanFocusValue, setIbanFocusValue] = useState("");
+  const [beneName, setBeneName] = useState("");
+  const [beneErrorStatus, setBeneErrorStatus] = useState("");
+
+  const initialData: any = {};
+  const {
+    payeeName,
+    isValidPayeeName,
+    payeeNameErrorMessage,
+    payeeAccNo,
+    isValidPayeeAccNo,
+    payeeAccNoErrorMessage,
+    address,
+    isValidPayeeAddress,
+    addressErrorMessage,
+    address1,
+    isValidPayeeAddress1,
+    address1ErrorMessage,
+    address2,
+    isValidPayeeAddress2,
+    address2ErrorMessage,
+    payeeEmail,
+    isValidPayeeEmail,
+    emailErrorMessage,
+    payeeShortName,
+    isValidPayeeShortName,
+    shortNameErrorMessage,
+    handlePayeeNameChange,
+    handlePayeeAccNoChange,
+    handleAddressChange,
+    handleAddressOneChange,
+    handleAddressTwoChange,
+    handlePayeeShortNameChange,
+    handleEmailChange,
+  } = useValidator(initialData);
+  const [formData, setFormData] = useState<ComponentState>({
+    selectedCtry: [],
+    selectedCcy: [],
+    selectedPayeeType: [],
+    payeeNameValue: "",
+    payeeSrtName: "",
+    selectedBankOption: [],
+    payeeEmailValue: "",
+    emailCheckBox: false,
+    addressValue: "",
+    addressOneValue: "",
+    addressTwoValue: "",
+    acctNumber: "",
+    id: "",
+    benificiaryName: "",
+  });
+
+  const goBackOneStep = () => {};
+
+  const continueBtnHandler = async () => {
+    setLoadingScreen(true);
+    const payload = {
+      action: "INITIATE",
+      "acct-number": payeeAccNo,
+      "is-first-pay-req": false,
+      "first-name": payeeName,
+      "payee-type": payeeType["key"].slice(0, 7),
+      "acct-currency": selectedCurrency,
+      retainRequest: false,
+      "acct-type-code": payeeType["key"] === "IBPAYEE-CC" ? "CC" : "AC",
+      "nick-name": payeeShortName,
+      "payee-country": selectedCountry ? selectedCountry.value : "",
+      "acct-country": country,
+      address1: truncateExtraSpaces(address),
+      address2: truncateExtraSpaces(address1),
+      address3: truncateExtraSpaces(address2),
+      email: payeeEmail,
+      "merchant-name": selectedBank["bank-name"],
+      "institution-details": [
+        {
+          "institution-name": selectedBank["bank-name"],
+          "institution-code": selectedBank["swift-code"],
+          "institution-code-type": "SWIFT",
+        },
+      ],
+      "tmx-app-version": appVersionNumber ? appVersionNumber : null,
+      "tmx-device-id": deviceId ? deviceId : null,
+      "tmx-browser-agent": isMobileBrowser() ? "mobilebrowser" : null,
+      "notify-payee": emailChkBox ? "Y" : "N",
+    };
+    try {
+      const { data } = await api.create("cpp-payees/details", payload);
+      setIsReview(true);
+      formData.id = data.id;
+      formData.benificiaryName = beneName;
+      setAddData(formData);
+      setLoadingScreen(false);
+    } catch (err) {
+      setIsReview(false);
+      setLoadingScreen(false);
+      let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+      const errorObj: ErrorData = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+      setGlobalErrorData(errorObj);
+    }
+  };
+
+  const backBtnHandler = () => {
+    const path = RouteConfig.MANAGE_PAYEE;
+    navigate(path);
+  };
+
+  const getPayeeTypes = async () => {
+    const countryCode = country;
+    setLoadingScreen(true);
+    try {
+      const { data } = await api.request({
+        url: `cpp-rdm/references/${countryCode}`,
+        type: "references",
+        params: {
+          filter: {
+            category: "PAYEETYPE",
+          },
+        },
+      });
+      setLoadingScreen(false);
+      setPayeeTypeOptions(data.details);
+    } catch (err) {
+      setLoadingScreen(false);
+      let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+      const errorObj: ErrorData = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+      setGlobalErrorData(errorObj);
+    }
+  };
+  const { isProfilingComplete } = useTmx(tmxPageId ? tmxPageId : "");
+
+  useEffect(() => {
+    const countryCode = country;
+    async function getAPIData() {
+      try {
+        setLoadingScreen(true);
+        const currData = await api.request({
+          url: `cpp-rdm/references/${countryCode}`,
+          type: "references",
+          params: {
+            filter: {
+              key: "CURRENCY",
+              category: payeeType["key"],
+            },
+          },
+        });
+        const type = payeeType["key"] === "IBPAYEE-CC";
+        const filterCurrencies =
+          !_.isEmpty(currData) && !_.isEmpty(currData.data)
+            ? currData.data.details.filter((cur: any) =>
+                type ? cur["value"] === localCurrency : cur
+              )
+            : [];
+        filterCurrencies.sort(sortCurrency);
+        setCurrencies(filterCurrencies);
+        if (filterCurrencies.length === 1) {
+          setSelectedCurrency(filterCurrencies[0].value);
+        }
+        const { data } = await api.request({
+          url: "cpp-rdm/banks",
+          type: "banks",
+          params: {
+            filter: {
+              countryCode: country,
+              paymentType: "RTGS",
+            },
+          },
+        });
+        if (
+          payeeType &&
+          (payeeType["key"] === "IBPAYEE-AC" ||
+            payeeType["key"] === "IBPAYEE-CC")
+        ) {
+          const ctryData = await api.request({
+            url: `cpp-rdm/references/${countryCode}`,
+            type: "references",
+            params: {
+              filter: {
+                key: "COUNTRY",
+                category: payeeType["key"],
+              },
+            },
+          });
+          setCountryList(_.sortBy(ctryData.data.details, "description"));
+        }
+        if (payeeType && payeeType["key"] === "TPPAYEE-AC") {
+          const selectedTPBank =
+            data &&
+            data.find((bank: any) => bank["swift-code"] === "SCBLAEADXXX");
+          setSelectedBank(selectedTPBank);
+        }
+        setLoadingScreen(false);
+        setBankList(_.sortBy(data, "bank-name"));
+      } catch (err: any) {
+        setLoadingScreen(false);
+        let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: err,
+        };
+        setGlobalErrorData(errorObj);
+      }
+    }
+    if (payeeType) {
+      const pageId =
+        payeeType && payeeType.key === "IBPAYEE-CC"
+          ? TMXConfig.PAGES.ADD_PAYEE_CC
+          : payeeType.key === "TPPAYEE-AC"
+          ? TMXConfig.PAGES.ADD_PAYEE_SCB
+          : TMXConfig.PAGES.ADD_PAYEE_OB;
+      setTmxPageId(pageId);
+      if (tmxPageId || !isWeb() || isIOS()) {
+        if (isProfilingComplete) {
+          getAPIData();
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payeeType, isProfilingComplete]);
+
+  useEffect(() => {
+    window.parent.scrollTo({ top: 0 });
+    getPayeeTypes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleBankNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const query = event.target.value;
+    setSearchBankName(query);
+  };
+
+  const handleCurencyChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const query = event.target.value;
+    setSearchCurrency(query);
+  };
+
+  const handleCtryChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const query = event.target.value;
+    setSearchCtry(query);
+  };
+
+  const handlePayeeTypeChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const query = event.target.value;
+    setSearchPayeeType(query);
+  };
+
+  const filteredBankList =
+    bankList &&
+    bankList.filter(
+      (data: any) =>
+        data &&
+        data["bank-name"].toLowerCase().includes(searchBankName.toLowerCase())
+    );
+  const filteredCurrencyList =
+    currencies &&
+    currencies.filter(
+      (data: any) =>
+        data &&
+        data["value"].toLowerCase().includes(searchCurrency.toLocaleLowerCase())
+    );
+  const filteredCountryList =
+    countryList &&
+    countryList.filter(
+      (data: any) =>
+        data &&
+        data["description"]
+          .toLowerCase()
+          .includes(searchCtry.toLocaleLowerCase())
+    );
+
+  useEffect(() => {
+    if (
+      isOpenCountryModal ||
+      isOpenBankModal ||
+      isOpenCurrencyModal ||
+      isOpenPayeeTypeModel
+    ) {
+      setTimeout(() => {
+        isOpenCountryModal && countryRef?.current?.focus();
+        isOpenBankModal && bankRef?.current?.focus();
+        isOpenCurrencyModal && curryRef?.current?.focus();
+        isOpenPayeeTypeModel && payeeTypeRef?.current?.focus();
+      }, 200);
+    }
+  }, [
+    isOpenCountryModal,
+    isOpenBankModal,
+    isOpenCurrencyModal,
+    isOpenPayeeTypeModel,
+  ]);
+
+  const ListOfBanks = (): ReactElement => {
+    return (
+      <div className="bank-list-container">
+        <ProtonDropdown
+          label="Payee Bank Name"
+          placeholder={
+            selectedBank?.["bank-name"]
+              ? selectedBank?.["bank-name"]
+              : "Select Bank"
+          }
+          onClick={() => setIsOpenBankModal(true)}
+          className="dropdown-focus"
+          onKeyDown={(event: any) => {
+            if (event.key === "Enter") {
+              setIsOpenBankModal(true);
+            }
+          }}
+        ></ProtonDropdown>
+        {isOpenBankModal && (
+          <ProtonModal
+            open={isOpenBankModal}
+            onModalClosed={() => setIsOpenBankModal(false)}
+            fullScreen
+          >
+            <div className="search-container">
+              <input
+                type="text"
+                className="search-bank"
+                onChange={handleBankNameChange}
+                placeholder="Search Bank"
+                ref={bankRef}
+                data-testid="bank-input"
+                value={searchBankName}
+              />
+            </div>
+            <ProtonContainer className="dropdown-values">
+              {filteredBankList &&
+                filteredBankList.map((type, index) => (
+                  <ProtonDropdownOption
+                    key={type["bank-name"]}
+                    className={
+                      type["bank-name"] === selectedBank?.["bank-name"]
+                        ? "bank-active"
+                        : "bank"
+                    }
+                    label={type["bank-name"]}
+                    value={type}
+                    data-testid="bank-select"
+                    onClick={(event: any) => {
+                      setSelectedBank(event.currentTarget.value);
+                      setIsOpenBankModal(false);
+                      setSearchBankName("");
+                      handlePayeeAccNoChange(
+                        payeeAccNo,
+                        payeeType["key"],
+                        event.currentTarget.value
+                      );
+                    }}
+                    onKeyDown={(event: any) => {
+                      if (event.key === "Enter") {
+                       setSelectedBank(event.currentTarget.value);
+                        setIsOpenBankModal(false);
+                        setSearchBankName("");
+                        handlePayeeAccNoChange(
+                          payeeAccNo,
+                          payeeType["key"],
+                          event.currentTarget.value
+                        );
+                      }
+                    }}
+                  ></ProtonDropdownOption>
+                ))}
+            </ProtonContainer>
+          </ProtonModal>
+        )}
+      </div>
+    );
+  };
+
+  const ListOfCurrencies = (): ReactElement => {
+    return (
+      <>
+        {selectedCurrency && payeeType && payeeType.key === "IBPAYEE-CC" ? (
+          <div className="currency">
+            <div>
+              <ProtonUppercase className="label" data-testid="curr-label">
+                Selected Currency
+              </ProtonUppercase>
+            </div>
+            <div className="value">
+              <ProtonUppercase>{selectedCurrency}</ProtonUppercase>
+            </div>
+          </div>
+        ) : (
+          <div className="currency-list-container">
+            <ProtonDropdown
+              label="Payee Currency"
+              placeholder={
+                selectedCurrency ? selectedCurrency : "Select Currency"
+              }
+              onClick={() => setIsOpenCurrencyModal(true)}
+              className="dropdown-focus"
+              onKeyDown={(event: any) => {
+                if (event.key === "Enter") {
+                  setIsOpenCurrencyModal(true);
+                }
+              }}
+              data-testid="currency-id"
+            ></ProtonDropdown>
+            {isOpenCurrencyModal && (
+              <ProtonModal
+                open={isOpenCurrencyModal}
+                onModalClosed={() => setIsOpenCurrencyModal(false)}
+                fullScreen
+              >
+                <div className="search-container">
+                  <input
+                    type="text"
+                    className="search-currency"
+                    value={searchCurrency}
+                    onChange={handleCurencyChange}
+                    placeholder="Search Currency"
+                    ref={curryRef}
+                    data-testid="curr-input"
+                  />
+                </div>
+                <ProtonContainer className="dropdown-values">
+                  {filteredCurrencyList &&
+                    filteredCurrencyList.map((type, index) => (
+                      <ProtonDropdownOption
+                        key={index}
+                        className={
+                          type["value"] === selectedCurrency
+                            ? "curr-active"
+                            : "curr"
+                        }
+                        label={type["value"]}
+                        value={type["value"]}
+                        data-testid="curr-select"
+                        onClick={(event: any) => {
+                          setSelectedCurrency(event.currentTarget.value);
+                          setIsOpenCurrencyModal(false);
+                          setSearchCurrency("");
+                        }}
+                        onKeyDown={(event: any) => {
+                          if (event.key === "Enter") {
+                            setSelectedCurrency(event.currentTarget.value);
+                            setIsOpenCurrencyModal(false);
+                            setSearchCurrency("");
+                          }
+                        }}
+                      ></ProtonDropdownOption>
+                    ))}
+                </ProtonContainer>
+              </ProtonModal>
+            )}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const ListOfCountries = (): ReactElement => {
+    return (
+      <div className="ctry-list-container">
+        <ProtonDropdown
+          label="Payee Country"
+          placeholder={
+            selectedCountry
+              ? selectedCountry?.["description"]
+              : "Select Country"
+          }
+          onClick={() => setIsOpenCountryModal(true)}
+          className="dropdown-focus"
+          onKeyDown={(event: any) => {
+            if (event.key === "Enter") {
+              setIsOpenCountryModal(true);
+            }
+          }}
+        ></ProtonDropdown>
+        {isOpenCountryModal && (
+          <ProtonModal
+            open={isOpenCountryModal}
+            onModalClosed={() => setIsOpenCountryModal(false)}
+            fullScreen
+          >
+            <div className="search-container">
+              <input
+                type="text"
+                className="search-ctry"
+                onChange={handleCtryChange}
+                placeholder="Search Country"
+                ref={countryRef}
+                value={searchCtry}
+                data-testid="country-input"
+              />
+            </div>
+            <ProtonContainer className="dropdown-values">
+              {filteredCountryList &&
+                filteredCountryList.map((type, index) => (
+                  <ProtonDropdownOption
+                    key={index}
+                    label={type["description"]}
+                    data-testid="country-select"
+                    className={
+                      type["description"] === selectedCountry?.["description"]
+                        ? "country-active"
+                        : "country"
+                    }
+                    value={type}
+                    onClick={(event: any) => {
+                      setSelectedCountry(event.currentTarget.value);
+                      setIsOpenCountryModal(false);
+                      setSearchCtry("");
+                    }}
+                    onKeyDown={(event: any) => {
+                      if (event.key === "Enter") {
+                        setSelectedCountry(event.currentTarget.value);
+                        setIsOpenCountryModal(false);
+                        setSearchCtry("");
+                      }
+                    }}
+                  ></ProtonDropdownOption>
+                ))}
+            </ProtonContainer>
+          </ProtonModal>
+        )}
+      </div>
+    );
+  };
+
+  const ListOfPayees = (): ReactElement => {
+    return (
+      <div className="payee-list-container">
+        <ProtonDropdown
+          id="payee-type"
+          label="Payee Type"
+          placeholder={
+            payeeType?.value ? payeeType?.value : "Select Payee Type"
+          }
+          onClick={() => setIsOpenPayeeTypeModel(true)}
+          className="dropdown-focus"
+          data-testId="payee-type-list"
+        ></ProtonDropdown>
+        {isOpenPayeeTypeModel && (
+          <ProtonModal
+            open={isOpenPayeeTypeModel}
+            onModalClosed={() => setIsOpenPayeeTypeModel(false)}
+            fullScreen
+          >
+            <div className="search-container">
+              <input
+                type="text"
+                className="search-bank"
+                onChange={handlePayeeTypeChange}
+                placeholder="Search Type"
+                ref={payeeTypeRef}
+                data-testid="bank-input"
+                value={searchPayeeType}
+              />
+            </div>
+            <ProtonContainer className="dropdown-values">
+              {payeeTypeOptions &&
+                payeeTypeOptions
+                  .filter(
+                    (data: any) =>
+                      data &&
+                      data["value"]
+                        .toLowerCase()
+                        .includes(searchPayeeType.toLowerCase())
+                  )
+                  .map((type, index) => (
+                    <ProtonDropdownOption
+                      key={type["value"]}
+                      className={
+                        type["value"] === payeeType?.value
+                          ? "bank-active"
+                          : "bank"
+                      }
+                      label={type["value"]}
+                      value={type}
+                      data-testid="payee-select"
+                      onClick={(event: any) => {
+                        let objList = payeeTypeOptions.find(
+                          (item: any) =>
+                            item.value === event.currentTarget.value.value
+                        );
+                        setPayeeType(objList);
+                        setIsOpenPayeeTypeModel(false);
+                        setSearchPayeeType("");
+                      }}
+                      onKeyDown={(event: any) => {
+                        if (event.key === "Enter") {
+                          let objList = payeeTypeOptions.find(
+                            (item: any) =>
+                              item.value === event.currentTarget.value.value
+                          );
+                          setPayeeType(objList);
+                          setIsOpenPayeeTypeModel(false);
+                          setSearchPayeeType("");
+                        }
+                      }}
+                    ></ProtonDropdownOption>
+                  ))}
+            </ProtonContainer>
+          </ProtonModal>
+        )}
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    setFormData((prevState) => ({
+      ...prevState,
+      selectedCtry: selectedCountry,
+      selectedCcy: selectedCurrency,
+      selectedPayeeType: payeeType,
+      payeeNameValue: payeeName,
+      payeeSrtName: payeeShortName,
+      selectedBankOption: selectedBank,
+      payeeEmailValue: payeeEmail,
+      emailCheckBox: emailChkBox,
+      addressValue: address,
+      acctNumber: payeeAccNo,
+      addressOneValue: address1 ? address1 : "",
+      addressTwoValue: address2 ? address2 : "",
+    }));
+    if (
+      payeeType &&
+      (payeeType["key"] === "IBPAYEE-AC" || payeeType["key"] === "IBPAYEE-CC")
+    ) {
+      let isValid =
+        (payeeType["key"] === "IBPAYEE-AC" ||
+          payeeType["key"] === "IBPAYEE-CC") &&
+        selectedBank &&
+        selectedCurrency &&
+        payeeAccNo &&
+        isValidPayeeAccNo &&
+        beneName &&
+        payeeName &&
+        isValidPayeeName &&
+        address &&
+        isValidPayeeAddress &&
+        selectedCountry &&
+        (isValidPayeeAddress1 || _.isEmpty(address1)) &&
+        (isValidPayeeAddress2 || _.isEmpty(address2)) &&
+        (isValidPayeeShortName || _.isEmpty(payeeShortName)) &&
+        (isValidPayeeEmail || _.isEmpty(payeeEmail))
+          ? false
+          : true;
+      setDisableCtnButton(isValid);
+    } else {
+      let isValidPayee =
+        payeeName &&
+        isValidPayeeName &&
+        payeeType &&
+        payeeAccNo &&
+        beneName &&
+        isValidPayeeAccNo &&
+        selectedCurrency &&
+        (isValidPayeeShortName || _.isEmpty(payeeShortName)) &&
+        (isValidPayeeEmail || _.isEmpty(payeeEmail))
+          ? false
+          : true;
+      setDisableCtnButton(isValidPayee);
+    }
+  }, [
+    payeeName,
+    payeeEmail,
+    payeeShortName,
+    payeeAccNo,
+    selectedCurrency,
+    selectedBank,
+    address,
+    address1,
+    address2,
+    selectedCountry,
+    emailChkBox,
+    payeeType,
+    isValidPayeeName,
+    isValidPayeeAccNo,
+    isValidPayeeAddress,
+    isValidPayeeAddress1,
+    isValidPayeeAddress2,
+    isValidPayeeEmail,
+    isValidPayeeShortName,
+  ]);
+  const Footer = (): ReactElement => {
+    return (
+      <div className="button-group lg-tiles">
+        <ProtonButton
+          color="blue"
+          onClick={backBtnHandler}
+          data-testid="back-button"
+        >
+          <ProtonIcon name="caret-left" width="24px" height="24px"></ProtonIcon>
+          <span>Back</span>
+        </ProtonButton>
+        <ProtonButton
+          disabled={disableCtnButton}
+          onClick={continueBtnHandler}
+          className="add-next"
+          data-testid="next-button"
+        >
+          Next
+        </ProtonButton>
+      </div>
+    );
+  };
+  const handleBlur = (event) => {
+    console.log("beneErrorStatus111", beneErrorStatus)
+    console.log("ibanFocusValue", ibanFocusValue)
+    // /*istanbul ignore if */
+    // if (payeeAccNo && !payeeAccNoErrorMessage && (payeeAccNo !== ibanFocusValue || beneErrorStatus)) {
+      if (payeeAccNo && payeeAccNo !== ibanFocusValue ) {
+      api
+        .post("cpp-account-proxies", { "account-no": payeeAccNo, "service-name": "PREPAYMENT_VALIDATION" })
+        .then((res: any) => {
+          if (res.data["customer-name"] && res.data["status-cd"] == 62) {
+            setBeneName(res.data["customer-name"])
+          } else {
+            setBeneErrorStatus(res.data["status-cd"])
+            setBeneName("Payee name as per beneficiary bank")
+          }
+        })
+        .catch((error: any) => {
+          setBeneErrorStatus(error.errors[0].status)
+          setBeneName("Payee name as per beneficiary bank")
+        });
+    }
+  }
+
+  const handleFocus = (focus) => {
+    setIbanFocusValue(focus.target.value)
+  }
+  const handleInputChange = () => {
+    // console.log("beneErrorStatus222", beneErrorStatus)
+    // if (beneErrorStatus) {
+      setBeneErrorStatus("Negative")
+    // }
+  }
+  return (
+    <div className="add-payee-form">
+      <div className="mobile-header">
+        <MobileNavigation
+          title="Add Local Payee"
+          showBackButton={false}
+          onBackCallback={goBackOneStep}
+          onReturnCallback={() => goBackToHomeScreen(country)}
+        />
+      </div>
+
+      <div className="lg-header">
+        <Header
+          title="Add Local Payee"
+          //onReturnCallback={goToHomeScreen}
+          data-testid="go-to-home"
+        />
+      </div>
+
+      <div className="add-payee-form1">
+        {coolingPeriod && configData[country].coolingPeriodHours && (
+          <p className="note-message">
+            <b>
+            {intl.formatMessage(
+              { id: "pay.transfer.coolingPeriod.note" },
+              { hours: configData[country].coolingPeriodHours }
+            )}
+            </b>
+          </p>
+        )}
+
+        {ListOfPayees()}
+        {payeeType && (
+          <>
+            <ProtonInput
+              name="Account Number"
+              className={
+                payeeAccNoErrorMessage
+                  ? "proton-form-input--invalid ele-space"
+                  : "ele-space"
+              }
+              onBlur={handleBlur}
+              onFocus={handleFocus}
+              data-testid="iban-input"
+              onValueChanged={(event) => {
+                handleInputChange()
+                handlePayeeAccNoChange(
+                  event.detail,
+                  payeeType["key"],
+                  selectedBank
+                )
+              }
+              }
+              value={payeeAccNo}
+              pattern={
+                payeeType["key"] === "IBPAYEE-AC"
+                  ? "^[A-Za-z]{2}[0-9]{21,32}$"
+                  : payeeType["key"] === "IBPAYEE-CC"
+                  ? selectedBank && selectedBank["swift-code"] === "AMEXAEADXXX"
+                    ? "^[0-9]{15,15}$"
+                    : "^[0-9]{16,16}$"
+                  : "^[0-9]+$"
+              }
+              validationMessage={payeeAccNoErrorMessage}
+              label={
+                payeeType && payeeType["key"] === "IBPAYEE-AC"
+                  ? intl.formatMessage({ id: "pay.payee.iban" })
+                  : payeeType["key"] === "IBPAYEE-CC"
+                  ? intl.formatMessage({ id: "pay.payee.card" })
+                  : intl.formatMessage({ id: "pay.payee.accnumber" })
+              }
+              placeholder={
+                payeeType && payeeType["key"] === "IBPAYEE-AC"
+                  ? intl.formatMessage({ id: "pay.transfer.payee.iban" })
+                  : payeeType["key"] === "IBPAYEE-CC"
+                  ? intl.formatMessage({
+                      id: "pay.transfer.payee.credit.card.number",
+                    })
+                  : intl.formatMessage({
+                      id: "pay.transfer.payee.account.number",
+                    })
+              }
+              maxlength={
+                payeeType && payeeType["key"] === "IBPAYEE-CC"
+                  ? selectedBank && selectedBank["swift-code"] === "AMEXAEADXXX"
+                    ? 15
+                    : 16
+                  : 34
+              }
+            />
+            <div className="bene-space">
+              <ProtonInput
+                disabled={true}
+                name="Benificiary Name"
+                value={beneName}
+                label="Account Name Validation (Feature powered by Central Bank of UAE)"
+                placeholder="Payee name as per beneficiary bank"
+              />
+              {beneErrorStatus && beneErrorStatus != "Negative" && (<p className="bene-error-message">Unable to fetch Beneficiary Name based on the IBAN entered</p>)}
+            </div>
+            <ProtonInput
+              className={
+                payeeNameErrorMessage
+                  ? "proton-form-input--invalid ele-space"
+                  : "ele-space"
+              }
+              name="Payee Name"
+              onValueChanged={(event: any) =>
+                handlePayeeNameChange(event.detail)
+              }
+              label="Payee Name"
+              value={payeeName}
+              placeholder="Please enter payee name"
+              pattern="^[0-9A-Za-z ]+$"
+              validationMessage={payeeNameErrorMessage}
+              maxlength={35}
+              data-testid="search-payee-input"
+            />
+            {(payeeType["key"] === "IBPAYEE-AC" ||
+              payeeType["key"] === "IBPAYEE-CC") &&
+              ListOfBanks()}
+            {/* {payeeAccNoErrorMessage ? (
+              <p className="input-invalid-err">
+                {payeeType["key"] === "IBPAYEE-CC" && payeeAccNo
+                  ? selectedBank && selectedBank["swift-code"]
+                    ? payeeAccNoErrorMessage
+                    : payeeAccNoErrorMessage
+                  : ""}
+              </p>
+            ) : (
+              ""
+            )} */}
+            {(payeeType["key"] === "IBPAYEE-AC" ||
+              payeeType["key"] === "IBPAYEE-CC") && (
+              <>
+                {ListOfCountries()}
+                <ProtonInput
+                  name="Address"
+                  className={
+                    addressErrorMessage ? "proton-form-input--invalid" : ""
+                  }
+                  onValueChanged={(event) => handleAddressChange(event.detail)}
+                  value={address}
+                  label="Address"
+                  placeholder="Address Line1 *"
+                  pattern="^[a-zA-Z0-9-\s():/,.]+$"
+                  validationMessage={addressErrorMessage}
+                  maxlength={35}
+                />
+                {addressErrorMessage ? (
+                  <p className="input-invalid">{addressErrorMessage}</p>
+                ) : (
+                  ""
+                )}
+                <br />
+                <ProtonInput
+                  name="Address1"
+                  className={
+                    address1ErrorMessage ? "proton-form-input--invalid" : ""
+                  }
+                  onValueChanged={(event) =>
+                    handleAddressOneChange(event.detail)
+                  }
+                  value={address1}
+                  placeholder="Address Line2"
+                  pattern="^[a-zA-Z0-9-\s():/,.]+$"
+                  validationMessage={address1ErrorMessage}
+                  maxlength={35}
+                />
+                {address1ErrorMessage ? (
+                  <p className="input-invalid">{address1ErrorMessage}</p>
+                ) : (
+                  ""
+                )}
+                <br />
+                <ProtonInput
+                  name="Address2"
+                  className={
+                    address2ErrorMessage ? "proton-form-input--invalid" : ""
+                  }
+                  onValueChanged={(event) =>
+                    handleAddressTwoChange(event.detail)
+                  }
+                  value={address2}
+                  placeholder="Address Line3"
+                  pattern="^[a-zA-Z0-9-\s():/,.]+$"
+                  validationMessage={address2ErrorMessage}
+                  maxlength={35}
+                />
+                {address2ErrorMessage ? (
+                  <p className="input-invalid">{address2ErrorMessage}</p>
+                ) : (
+                  ""
+                )}
+              </>
+            )}
+            {ListOfCurrencies()}
+            <ProtonInput
+              name="Short Name"
+              className={
+                shortNameErrorMessage
+                  ? "proton-form-input--invalid ele-space"
+                  : "ele-space"
+              }
+              onValueChanged={(event) =>
+                handlePayeeShortNameChange(event.detail)
+              }
+             value={payeeShortName}
+              label="Short Name"
+              placeholder="Please enter short name"
+              pattern="^[0-9A-Za-z ]+$"
+              validationMessage={shortNameErrorMessage}
+              maxlength={15}
+            />
+            <ProtonInput
+              type="email"
+              name="Payee Email"
+              onValueChanged={(event) => handleEmailChange(event.detail)}
+              value={payeeEmail}
+              label="Payee Email"
+              placeholder="Please enter payee email."
+              pattern="^[^\s@]+@[^\s@]+\.[^\s@]+$"
+              validationMessage={emailErrorMessage}
+              className="ele-space"
+            />{" "}
+            <br />
+            <div className="ftm-container">
+              <ProtonRadioButtonContainer>
+                <ProtonCheckbox
+                  checkboxId="1"
+                  onClick={(evt) => {
+                    const isChecked =
+                      evt?.currentTarget?.querySelector("input")?.checked ||
+                      false;
+                    setEmailChkBox(isChecked);
+                  }}
+                  isChecked={emailChkBox}
+                  isDisabled={_.isEmpty(payeeEmail)}
+                ></ProtonCheckbox>
+                <label data-testid="mail-text">
+                  Do you want to send email when a transfer is made?
+                </label>
+              </ProtonRadioButtonContainer>
+            </div>
+          </>
+        )}
+      </div>
+      {Footer()}
+      {isReview && addData ? (
+        <AddReview
+          payeeFlow=""
+          addData={addData}
+          onCloseClicked={function (): void {
+            setIsReview(!isReview);
+          }}
+        ></AddReview>
+      ) : (
+        <></>
+      )}
+      {isLoadingScreen ? <ModalSpinner /> : <></>}
+    </div>
+  );
+};
+
+export default AddPayee;
