@@ -1,0 +1,111 @@
+// Test Case 1: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is different from ibanFocusValue
+// This case ensures that the first part of the condition (payeeAccNo !== ibanFocusValue) is met?
+
+it("should trigger API call when payeeAccNo is different from ibanFocusValue", async () => {
+  server.use(...handlers);  // Use necessary handlers
+  await act(async () => await renderAddPayee());
+
+  // Mock setup for variables
+  const payeeAccNo = "1234567890"; // Non-empty
+  const ibanFocusValue = "0987654321"; // Different from payeeAccNo
+  const payeeAccNoErrorMessage = null; // Falsy value
+
+  // Set state variables or mock them as needed (this will depend on how your component works)
+  await act(async () => {
+    setPayeeAccNo(payeeAccNo);
+    setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
+    setIbanFocusValue(ibanFocusValue);
+  });
+
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
+
+  // Expect API call or some side effect to happen
+  expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on the actual expected side effect
+});
+
+
+// Test Case 2: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and beneErrorStatus is truthy
+// This case ensures that the second part of the condition (beneErrorStatus) is met.
+
+it("should trigger API call when beneErrorStatus is truthy", async () => {
+    server.use(...handlers);  // Use necessary handlers
+    await act(async () => await renderAddPayee());
+  
+    // Mock setup for variables
+    const payeeAccNo = "1234567890"; // Non-empty
+    const ibanFocusValue = "0987654321"; // Doesn't matter in this case
+    const payeeAccNoErrorMessage = null; // Falsy value
+    const beneErrorStatus = true; // Truthy value (error status)
+  
+    // Set state variables or mock them as needed
+    await act(async () => {
+      setPayeeAccNo(payeeAccNo);
+      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
+      setBeneErrorStatus(beneErrorStatus);
+    });
+  
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
+  
+    // Expect API call or some side effect to happen
+    expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on actual side effect
+  });
+
+  
+//   Test Case 3: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is equal to ibanFocusValue
+// This case ensures the condition for (payeeAccNo !== ibanFocusValue) is not satisfied, but beneErrorStatus could still trigger the block
+
+it("should trigger API call when payeeAccNo is the same as ibanFocusValue, but beneErrorStatus is truthy", async () => {
+    server.use(...handlers);  // Use necessary handlers
+    await act(async () => await renderAddPayee());
+  
+    // Mock setup for variables
+    const payeeAccNo = "1234567890"; // Non-empty
+    const ibanFocusValue = "1234567890"; // Same as payeeAccNo
+    const payeeAccNoErrorMessage = null; // Falsy value
+    const beneErrorStatus = true; // Truthy value
+  
+    // Set state variables or mock them as needed
+    await act(async () => {
+      setPayeeAccNo(payeeAccNo);
+      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
+      setIbanFocusValue(ibanFocusValue);
+      setBeneErrorStatus(beneErrorStatus);
+    });
+  
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
+  
+    // Expect API call or some side effect to happen
+    expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on actual expected side effect
+  });
+
+  
+//   Test Case 4: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is equal to ibanFocusValue
+// This case ensures the scenario where the payeeAccNo is the same as ibanFocusValue but the API call does not happen (i.e., beneErrorStatus is falsy).
+it("should not trigger API call when payeeAccNo equals ibanFocusValue and beneErrorStatus is falsy", async () => {
+    server.use(...handlers);  // Use necessary handlers
+    await act(async () => await renderAddPayee());
+  
+    // Mock setup for variables
+    const payeeAccNo = "1234567890"; // Non-empty
+    const ibanFocusValue = "1234567890"; // Same as payeeAccNo
+    const payeeAccNoErrorMessage = null; // Falsy value
+    const beneErrorStatus = false; // Falsy value
+  
+    // Set state variables or mock them as needed
+    await act(async () => {
+      setPayeeAccNo(payeeAccNo);
+      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
+      setIbanFocusValue(ibanFocusValue);
+      setBeneErrorStatus(beneErrorStatus);
+    });
+  
+    const payeeName = screen.getByTestId("iban-input");
+    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
+  
+    // Assert no API call was made (e.g., no loading indicator appears)
+    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+  });
+  
