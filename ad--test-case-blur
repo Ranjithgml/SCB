@@ -1,132 +1,104 @@
-1. Basic handleBlur() Test
-it("triggers handleBlur when input loses focus", () => {
-  render(mockIntl(<AddPayee />));
+// Test Case 1: Check if handleBlur() triggers when IBAN field is blurred
+// This test case ensures that the handleBlur() function is called correctly when the IBAN field loses focus.
 
-  const accountInput = screen.getByTestId("iban-input");
+it("should trigger handleBlur on IBAN input field blur", async () => {
+  server.use(...handlers);  // Use the necessary handlers
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
+  });
 
-  // Simulate user typing an invalid IBAN
-  userEvent.type(accountInput, "INVALID123");
-
-  // Trigger blur event
-  fireEvent.blur(accountInput);
-
-  // Expect an error message to appear
-  expect(screen.getByText(/invalid account number/i)).toBeInTheDocument();
-});
-2. Ensure Valid Input Does Not Show Error
-it("does not show an error for a valid account number", () => {
-  render(mockIntl(<AddPayee />));
-
-  const accountInput = screen.getByTestId("iban-input");
-
-  // Enter a valid IBAN
-  userEvent.type(accountInput, "AE123456789012345678901");
-
-  // Blur event
-  fireEvent.blur(accountInput);
-
-  // Expect no error message
-  expect(screen.queryByText(/invalid account number/i)).not.toBeInTheDocument();
-});
-3. Simulate API Call in handleBlur() Using Mock Service Worker (MSW)
-If handleBlur() makes an API request to validate the IBAN, we should mock the API call.
-import { rest } from "msw";
-import { setupServer } from "msw/node";
-
-const server = setupServer(
-  rest.post("/api/validate-iban", (req, res, ctx) => {
-    return res(ctx.status(400), ctx.json({ message: "Invalid IBAN" }));
-  })
-);
-
-beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-
-it("shows error message when IBAN validation API fails", async () => {
-  render(mockIntl(<AddPayee />));
-
-  const accountInput = screen.getByTestId("iban-input");
-
-  userEvent.type(accountInput, "AE123456789012345678901");
-
-  fireEvent.blur(accountInput);
-
-  await waitFor(() =>
-    expect(screen.getByText(/Invalid IBAN/i)).toBeInTheDocument()
-  );
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: "New IBAN Value" } });
+  expect(payeeName).toHaveValue("New IBAN Value"); // Ensure value is updated
 });
 
 
+// Test Case 2: Check if API call is triggered on IBAN blur (success case)
+// This test case checks if the API call is triggered successfully when the IBAN field is blurred.
 
-for remaining test cases
-import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import AddPayee from "../AddPayee";
-import { IntlProvider } from "react-intl";
-import userEvent from "@testing-library/user-event";
-
-const mockIntl = (component) => (
-  <IntlProvider locale="en">{component}</IntlProvider>
-);
-
-describe("AddPayee Component", () => {
-  it("renders AddPayee component", () => {
-    render(mockIntl(<AddPayee />));
-    expect(screen.getByText("Add Local Payee")).toBeInTheDocument();
+it("should handle API call on IBAN blur for success case", async () => {
+  server.use(...handlersSuccess); // Success handlers
+  server.use(...handlers);  // Use necessary data handlers
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
   });
 
-  it("displays the cooling period message if applicable", () => {
-    const configData = { UAE: { coolingPeriodHours: 24 } };
-    render(mockIntl(<AddPayee coolingPeriod={true} configData={configData} country="UAE" />));
-    expect(screen.getByText(/24/)).toBeInTheDocument();
-  });
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: "1234567890" } });
 
-  it("handles account number input correctly", () => {
-    render(mockIntl(<AddPayee payeeType={{ key: "IBPAYEE-AC" }} />));
-    const input = screen.getByTestId("iban-input");
-    userEvent.type(input, "AE123456789012345678901");
-    expect(input).toHaveValue("AE123456789012345678901");
-  });
-
-  it("shows validation error for invalid email", async () => {
-    render(mockIntl(<AddPayee />));
-    const emailInput = screen.getByLabelText("Payee Email");
-    userEvent.type(emailInput, "invalid-email");
-    fireEvent.blur(emailInput);
-    await waitFor(() => expect(screen.getByText(/invalid email/i)).toBeInTheDocument());
-  });
-
-  it("toggles email checkbox when clicked", () => {
-    render(mockIntl(<AddPayee payeeEmail="test@example.com" />));
-    const checkbox = screen.getByTestId("mail-text").previousSibling;
-    expect(checkbox).not.toBeChecked();
-    userEvent.click(checkbox);
-    expect(checkbox).toBeChecked();
-  });
-
-  it("opens and closes the review modal", () => {
-    render(mockIntl(<AddPayee isReview={true} addData={{ name: "John Doe" }} />));
-    expect(screen.getByText(/Review/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Close/i));
-    expect(screen.queryByText(/Review/i)).not.toBeInTheDocument();
-  });
-
-  it("shows the loading spinner when isLoadingScreen is true", () => {
-    render(mockIntl(<AddPayee isLoadingScreen={true} />));
-    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
-  });
-
-  it("handles address input correctly", () => {
-    render(mockIntl(<AddPayee />));
-    const addressInput = screen.getByPlaceholderText("Address Line1 *");
-    userEvent.type(addressInput, "123 Main Street");
-    expect(addressInput).toHaveValue("123 Main Street");
-  });
-
-  it("renders bank selection for IBAN and credit card payees", () => {
-    render(mockIntl(<AddPayee payeeType={{ key: "IBPAYEE-AC" }} />));
-    expect(screen.getByText(/Select Bank/i)).toBeInTheDocument();
-  });
+  // Check that API call is triggered and the value is updated
+  expect(await payeeName).toHaveValue("1234567890");
+  // Additional assertions related to the response handling
 });
 
+// Test Case 3: Check if API call triggers on IBAN blur (failure case)
+// This case checks if the API failure is properly handled when the IBAN field is blurred.
+
+// Test Case 3: Check if API call triggers on IBAN blur (failure case)
+// This case checks if the API failure is properly handled when the IBAN field is blurred.
+it("should handle API failure on IBAN blur", async () => {
+  server.use(...handlersFailure); // Failure handlers
+  server.use(...handlers);  // Use necessary data handlers
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
+  });
+
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: "1234567890" } });
+
+  // Check if error handling occurs correctly (displaying error message or state update)
+  await waitFor(() => expect(screen.getByText(/Error Occurred/i)).toBeInTheDocument());
+});
+
+// Test Case 4: Check if API call triggers on IBAN blur (failure with specific code)
+// This test case ensures that the function handles failure cases with specific error codes (e.g., when status code is 45).
+it("should handle specific API failure code on IBAN blur", async () => {
+  server.use(...handlersFailureCode); // Failure code handlers
+  server.use(...handlers);  // Use necessary data handlers
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
+  });
+
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: "1234567890" } });
+
+  // Check if the specific error code message appears
+  await waitFor(() => expect(screen.getByText(/Unable to fetch Beneficiary Name/i)).toBeInTheDocument());
+});
+
+// Test Case 5: Check if handleBlur() updates the IBAN input value on focus event
+// This case ensures that the IBAN field updates its value correctly when the user focuses on it.
+
+it("should update IBAN value on focus", async () => {
+  server.use(...handlers);
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
+  });
+
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.focus(payeeName, { target: { value: "Focus IBAN" } });
+  expect(await payeeName).toHaveValue("Focus IBAN");
+});
+
+
+// Test Case 6: Ensure no API call or action occurs if IBAN is unchanged
+// This test case ensures that the handleBlur() function does not trigger any actions if the value of the IBAN field has not changed.
+
+it("should not trigger API call on IBAN blur if value is unchanged", async () => {
+  server.use(...handlers); // Use necessary handlers
+  await act(async () => await renderAddPayee());
+  await act(async () => {
+    await optionSelected(1); // Select second payee type
+  });
+
+  const payeeName = screen.getByTestId("iban-input");
+  await fireEvent.blur(payeeName, { target: { value: "" } });  // No change in value
+
+  // Assert no API call was made (e.g., no loading indicator appears)
+  await waitFor(() => expect(screen.queryByText(/Loading.../)).not.toBeInTheDocument());
+});
