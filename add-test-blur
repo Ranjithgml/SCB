@@ -1,0 +1,107 @@
+import { render, fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { api } from "../../../../api"; // Assuming api is imported from the correct path
+import AddPayee from "../add-payee"; // Replace with the correct import path
+import { server } from "../../../../mocks/server"; // Mock server for msw (if using MSW)
+import { rest } from "msw"; // Mocking API requests
+
+// Mock setup
+jest.mock("../../../../api", () => ({
+  post: jest.fn(),
+}));
+
+describe("handleBlur() test", () => {
+  it("should call api and handle success response for valid payeeAccNo and no errors", async () => {
+    // Setup the mock values for the test to make the condition true
+    const payeeAccNo = "AE100330000010410000108";
+    const ibanFocusValue = "AE100330000010410000109"; // Different from payeeAccNo to trigger the condition
+    const beneErrorStatus = null; // This will make the second part of the OR condition false
+    const payeeAccNoErrorMessage = ""; // Falsy value for payeeAccNoErrorMessage
+
+    // Mock API response for success
+    api.post.mockResolvedValueOnce({
+      data: {
+        "customer-name": "John Doe",
+        "status-cd": 62,
+      },
+    });
+
+    // Render the component
+    render(<AddPayee />);
+
+    // Trigger the blur event on the input that should call handleBlur
+    const payeeAccNoInput = screen.getByTestId("iban-input"); // Adjust testId according to your component
+    fireEvent.blur(payeeAccNoInput, {
+      target: { value: payeeAccNo },
+    });
+
+    // Ensure the API call was made
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post).toHaveBeenCalledWith("cpp-account-proxies", {
+      "account-no": payeeAccNo,
+      "service-name": "PREPAYMENT_VALIDATION",
+    });
+
+    // Check if the beneName is set correctly based on API response
+    await waitFor(() => expect(screen.getByText("John Doe")).toBeInTheDocument());
+  });
+
+  it("should handle API failure and update the error status", async () => {
+    // Setup the mock values for the test to make the condition true
+    const payeeAccNo = "AE100330000010410000108";
+    const ibanFocusValue = "AE100330000010410000109"; // Different from payeeAccNo to trigger the condition
+    const beneErrorStatus = null; // This will make the second part of the OR condition false
+    const payeeAccNoErrorMessage = ""; // Falsy value for payeeAccNoErrorMessage
+
+    // Mock API response for failure
+    api.post.mockRejectedValueOnce({
+      errors: [
+        {
+          status: "500",
+          code: "CSL-100",
+          title: "Error Occurred",
+          detail: "An error occurred. Please contact support with the error ID",
+        },
+      ],
+    });
+
+    // Render the component
+    render(<AddPayee />);
+
+    // Trigger the blur event on the input that should call handleBlur
+    const payeeAccNoInput = screen.getByTestId("iban-input"); // Adjust testId according to your component
+    fireEvent.blur(payeeAccNoInput, {
+      target: { value: payeeAccNo },
+    });
+
+    // Ensure the API call was made
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post).toHaveBeenCalledWith("cpp-account-proxies", {
+      "account-no": payeeAccNo,
+      "service-name": "PREPAYMENT_VALIDATION",
+    });
+
+    // Check if error status is set
+    await waitFor(() => expect(screen.getByText("Payee name as per beneficiary bank")).toBeInTheDocument());
+  });
+
+  it("should not call API if condition is not met", async () => {
+    // Setup the mock values to fail the if condition
+    const payeeAccNo = ""; // Empty value to fail payeeAccNo check
+    const ibanFocusValue = "AE100330000010410000109"; // This doesn't matter as the first condition will fail
+    const beneErrorStatus = null; // This also doesn't matter as the first condition will fail
+    const payeeAccNoErrorMessage = "Error"; // This will make the condition false
+
+    // Render the component
+    render(<AddPayee />);
+
+    // Trigger the blur event on the input that should call handleBlur
+    const payeeAccNoInput = screen.getByTestId("iban-input"); // Adjust testId according to your component
+    fireEvent.blur(payeeAccNoInput, {
+      target: { value: payeeAccNo },
+    });
+
+    // Ensure the API was not called
+    await waitFor(() => expect(api.post).not.toHaveBeenCalled());
+  });
+});
