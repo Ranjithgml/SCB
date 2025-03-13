@@ -1,0 +1,132 @@
+1. Basic handleBlur() Test
+it("triggers handleBlur when input loses focus", () => {
+  render(mockIntl(<AddPayee />));
+
+  const accountInput = screen.getByTestId("iban-input");
+
+  // Simulate user typing an invalid IBAN
+  userEvent.type(accountInput, "INVALID123");
+
+  // Trigger blur event
+  fireEvent.blur(accountInput);
+
+  // Expect an error message to appear
+  expect(screen.getByText(/invalid account number/i)).toBeInTheDocument();
+});
+2. Ensure Valid Input Does Not Show Error
+it("does not show an error for a valid account number", () => {
+  render(mockIntl(<AddPayee />));
+
+  const accountInput = screen.getByTestId("iban-input");
+
+  // Enter a valid IBAN
+  userEvent.type(accountInput, "AE123456789012345678901");
+
+  // Blur event
+  fireEvent.blur(accountInput);
+
+  // Expect no error message
+  expect(screen.queryByText(/invalid account number/i)).not.toBeInTheDocument();
+});
+3. Simulate API Call in handleBlur() Using Mock Service Worker (MSW)
+If handleBlur() makes an API request to validate the IBAN, we should mock the API call.
+import { rest } from "msw";
+import { setupServer } from "msw/node";
+
+const server = setupServer(
+  rest.post("/api/validate-iban", (req, res, ctx) => {
+    return res(ctx.status(400), ctx.json({ message: "Invalid IBAN" }));
+  })
+);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+it("shows error message when IBAN validation API fails", async () => {
+  render(mockIntl(<AddPayee />));
+
+  const accountInput = screen.getByTestId("iban-input");
+
+  userEvent.type(accountInput, "AE123456789012345678901");
+
+  fireEvent.blur(accountInput);
+
+  await waitFor(() =>
+    expect(screen.getByText(/Invalid IBAN/i)).toBeInTheDocument()
+  );
+});
+
+
+
+for remaining test cases
+import React from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import AddPayee from "../AddPayee";
+import { IntlProvider } from "react-intl";
+import userEvent from "@testing-library/user-event";
+
+const mockIntl = (component) => (
+  <IntlProvider locale="en">{component}</IntlProvider>
+);
+
+describe("AddPayee Component", () => {
+  it("renders AddPayee component", () => {
+    render(mockIntl(<AddPayee />));
+    expect(screen.getByText("Add Local Payee")).toBeInTheDocument();
+  });
+
+  it("displays the cooling period message if applicable", () => {
+    const configData = { UAE: { coolingPeriodHours: 24 } };
+    render(mockIntl(<AddPayee coolingPeriod={true} configData={configData} country="UAE" />));
+    expect(screen.getByText(/24/)).toBeInTheDocument();
+  });
+
+  it("handles account number input correctly", () => {
+    render(mockIntl(<AddPayee payeeType={{ key: "IBPAYEE-AC" }} />));
+    const input = screen.getByTestId("iban-input");
+    userEvent.type(input, "AE123456789012345678901");
+    expect(input).toHaveValue("AE123456789012345678901");
+  });
+
+  it("shows validation error for invalid email", async () => {
+    render(mockIntl(<AddPayee />));
+    const emailInput = screen.getByLabelText("Payee Email");
+    userEvent.type(emailInput, "invalid-email");
+    fireEvent.blur(emailInput);
+    await waitFor(() => expect(screen.getByText(/invalid email/i)).toBeInTheDocument());
+  });
+
+  it("toggles email checkbox when clicked", () => {
+    render(mockIntl(<AddPayee payeeEmail="test@example.com" />));
+    const checkbox = screen.getByTestId("mail-text").previousSibling;
+    expect(checkbox).not.toBeChecked();
+    userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+  });
+
+  it("opens and closes the review modal", () => {
+    render(mockIntl(<AddPayee isReview={true} addData={{ name: "John Doe" }} />));
+    expect(screen.getByText(/Review/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Close/i));
+    expect(screen.queryByText(/Review/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the loading spinner when isLoadingScreen is true", () => {
+    render(mockIntl(<AddPayee isLoadingScreen={true} />));
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+  });
+
+  it("handles address input correctly", () => {
+    render(mockIntl(<AddPayee />));
+    const addressInput = screen.getByPlaceholderText("Address Line1 *");
+    userEvent.type(addressInput, "123 Main Street");
+    expect(addressInput).toHaveValue("123 Main Street");
+  });
+
+  it("renders bank selection for IBAN and credit card payees", () => {
+    render(mockIntl(<AddPayee payeeType={{ key: "IBPAYEE-AC" }} />));
+    expect(screen.getByText(/Select Bank/i)).toBeInTheDocument();
+  });
+});
+
