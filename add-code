@@ -815,10 +815,7 @@ const AddPayee = () => {
   };
   const handleBlur = (event) => {
     console.log("beneErrorStatus111", beneErrorStatus)
-    console.log("ibanFocusValue", ibanFocusValue)
-    // /*istanbul ignore if */
-    // if (payeeAccNo && !payeeAccNoErrorMessage && (payeeAccNo !== ibanFocusValue || beneErrorStatus)) {
-      if (payeeAccNo && payeeAccNo !== ibanFocusValue ) {
+    if (payeeAccNo && !payeeAccNoErrorMessage && (payeeAccNo !== ibanFocusValue || beneErrorStatus)) {
       api
         .post("cpp-account-proxies", { "account-no": payeeAccNo, "service-name": "PREPAYMENT_VALIDATION" })
         .then((res: any) => {
@@ -840,10 +837,10 @@ const AddPayee = () => {
     setIbanFocusValue(focus.target.value)
   }
   const handleInputChange = () => {
-    // console.log("beneErrorStatus222", beneErrorStatus)
-    // if (beneErrorStatus) {
+    console.log("beneErrorStatus222", beneErrorStatus)
+    if (beneErrorStatus) {
       setBeneErrorStatus("Negative")
-    // }
+    }
   }
   return (
     <div className="add-payee-form">
