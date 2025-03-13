@@ -1,13 +1,10 @@
 import { render, fireEvent, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { api } from "../../../../api"; // Assuming api is imported from the correct path
+import { api } from "../../../../api"; // Import the api module from the correct path
 import AddPayee from "../add-payee"; // Replace with the correct import path
-import { server } from "../../../../mocks/server"; // Mock server for msw (if using MSW)
-import { rest } from "msw"; // Mocking API requests
 
-// Mock setup
+// Mock api.post method before running the tests
 jest.mock("../../../../api", () => ({
-  post: jest.fn(),
+  post: jest.fn(), // Mock the post method of api
 }));
 
 describe("handleBlur() test", () => {
@@ -18,7 +15,7 @@ describe("handleBlur() test", () => {
     const beneErrorStatus = null; // This will make the second part of the OR condition false
     const payeeAccNoErrorMessage = ""; // Falsy value for payeeAccNoErrorMessage
 
-    // Mock API response for success
+    // Mock the API success response
     api.post.mockResolvedValueOnce({
       data: {
         "customer-name": "John Doe",
@@ -53,7 +50,7 @@ describe("handleBlur() test", () => {
     const beneErrorStatus = null; // This will make the second part of the OR condition false
     const payeeAccNoErrorMessage = ""; // Falsy value for payeeAccNoErrorMessage
 
-    // Mock API response for failure
+    // Mock API failure response
     api.post.mockRejectedValueOnce({
       errors: [
         {
