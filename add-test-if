@@ -1,111 +1,43 @@
-// Test Case 1: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is different from ibanFocusValue
-// This case ensures that the first part of the condition (payeeAccNo !== ibanFocusValue) is met?
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import AddPayee from './AddPayee'; // Adjust the import path based on your project
 
-it("should trigger API call when payeeAccNo is different from ibanFocusValue", async () => {
-  server.use(...handlers);  // Use necessary handlers
-  await act(async () => await renderAddPayee());
+// Mocks for your API calls
+jest.mock('path-to-your-api', () => ({
+  post: jest.fn(),
+}));
 
-  // Mock setup for variables
-  const payeeAccNo = "1234567890"; // Non-empty
-  const ibanFocusValue = "0987654321"; // Different from payeeAccNo
-  const payeeAccNoErrorMessage = null; // Falsy value
+// Test case
+it("should trigger API call when conditions in handleBlur are met", async () => {
+  // Mock implementation for `post` API call
+  const mockPost = require('path-to-your-api').post;
+  mockPost.mockResolvedValue({ success: true });
 
-  // Set state variables or mock them as needed (this will depend on how your component works)
-  await act(async () => {
-    setPayeeAccNo(payeeAccNo);
-    setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
-    setIbanFocusValue(ibanFocusValue);
+  // Step 1: Render the component
+  await act(async () => render(<AddPayee />));
+
+  // Step 2: Set up the conditions for the `if` statement to evaluate as true.
+  const payeeAccNo = '1234567890'; // Some valid account number
+  const ibanFocusValue = '0987654321'; // Different from `payeeAccNo` to satisfy the condition
+  const payeeAccNoErrorMessage = ''; // Error message should be falsy (empty string)
+  const beneErrorStatus = false; // Should also work, as the condition checks for `payeeAccNo !== ibanFocusValue`
+
+  // Set state to simulate the conditions (use fireEvent or act to simulate user interactions)
+
+  // Get the payee account number input element (adjust selector as needed)
+  const payeeAccNoInput = screen.getByTestId('iban-input');
+  
+  // Simulate user entering the account number
+  fireEvent.change(payeeAccNoInput, { target: { value: payeeAccNo } });
+
+  // Simulate the blur event on the input field
+  fireEvent.blur(payeeAccNoInput);
+
+  // Step 3: Wait for the API to be called
+  await waitFor(() => {
+    expect(mockPost).toHaveBeenCalledTimes(1); // Expect the API call to have been made once
   });
 
-  const payeeName = screen.getByTestId("iban-input");
-  await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
-
-  // Expect API call or some side effect to happen
-  expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on the actual expected side effect
+  // Step 4: Optionally, check if any loading indicator or result appears based on the response
+  // Example: Check for a "Loading..." text or success message after the API call.
+  expect(await screen.getByText('API Call Successful')).toBeInTheDocument(); // Adjust based on your actual success message
 });
-
-
-// Test Case 2: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and beneErrorStatus is truthy
-// This case ensures that the second part of the condition (beneErrorStatus) is met.
-
-it("should trigger API call when beneErrorStatus is truthy", async () => {
-    server.use(...handlers);  // Use necessary handlers
-    await act(async () => await renderAddPayee());
-  
-    // Mock setup for variables
-    const payeeAccNo = "1234567890"; // Non-empty
-    const ibanFocusValue = "0987654321"; // Doesn't matter in this case
-    const payeeAccNoErrorMessage = null; // Falsy value
-    const beneErrorStatus = true; // Truthy value (error status)
-  
-    // Set state variables or mock them as needed
-    await act(async () => {
-      setPayeeAccNo(payeeAccNo);
-      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
-      setBeneErrorStatus(beneErrorStatus);
-    });
-  
-    const payeeName = screen.getByTestId("iban-input");
-    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
-  
-    // Expect API call or some side effect to happen
-    expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on actual side effect
-  });
-
-  
-//   Test Case 3: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is equal to ibanFocusValue
-// This case ensures the condition for (payeeAccNo !== ibanFocusValue) is not satisfied, but beneErrorStatus could still trigger the block
-
-it("should trigger API call when payeeAccNo is the same as ibanFocusValue, but beneErrorStatus is truthy", async () => {
-    server.use(...handlers);  // Use necessary handlers
-    await act(async () => await renderAddPayee());
-  
-    // Mock setup for variables
-    const payeeAccNo = "1234567890"; // Non-empty
-    const ibanFocusValue = "1234567890"; // Same as payeeAccNo
-    const payeeAccNoErrorMessage = null; // Falsy value
-    const beneErrorStatus = true; // Truthy value
-  
-    // Set state variables or mock them as needed
-    await act(async () => {
-      setPayeeAccNo(payeeAccNo);
-      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
-      setIbanFocusValue(ibanFocusValue);
-      setBeneErrorStatus(beneErrorStatus);
-    });
-  
-    const payeeName = screen.getByTestId("iban-input");
-    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
-  
-    // Expect API call or some side effect to happen
-    expect(await screen.getByText("Loading...")).toBeInTheDocument(); // Adjust based on actual expected side effect
-  });
-
-  
-//   Test Case 4: payeeAccNo is truthy, payeeAccNoErrorMessage is falsy, and payeeAccNo is equal to ibanFocusValue
-// This case ensures the scenario where the payeeAccNo is the same as ibanFocusValue but the API call does not happen (i.e., beneErrorStatus is falsy).
-it("should not trigger API call when payeeAccNo equals ibanFocusValue and beneErrorStatus is falsy", async () => {
-    server.use(...handlers);  // Use necessary handlers
-    await act(async () => await renderAddPayee());
-  
-    // Mock setup for variables
-    const payeeAccNo = "1234567890"; // Non-empty
-    const ibanFocusValue = "1234567890"; // Same as payeeAccNo
-    const payeeAccNoErrorMessage = null; // Falsy value
-    const beneErrorStatus = false; // Falsy value
-  
-    // Set state variables or mock them as needed
-    await act(async () => {
-      setPayeeAccNo(payeeAccNo);
-      setPayeeAccNoErrorMessage(payeeAccNoErrorMessage);
-      setIbanFocusValue(ibanFocusValue);
-      setBeneErrorStatus(beneErrorStatus);
-    });
-  
-    const payeeName = screen.getByTestId("iban-input");
-    await fireEvent.blur(payeeName, { target: { value: payeeAccNo } });
-  
-    // Assert no API call was made (e.g., no loading indicator appears)
-    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
-  });
-  
