@@ -1,0 +1,34 @@
+const Card = () => {
+  useEffect(() => {
+    if (scrollRef.current) {
+      const contentHeight = scrollRef.current.scrollHeight;
+      const viewportHeight = window.innerHeight;
+      setShowLoader(contentHeight > viewportHeight);
+    }
+  }, [transferData]); // trigger check after data is set
+
+  return (
+    <div ref={scrollRef} className="transaction-history-details">
+      {transferData?.[0]?.["ecollections"]?.map((transaction: any) => (
+        <div className="transaction-info" onClick={() => onSubmitTransfer3()}>
+          {/* your transaction markup */}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+
+{showLoader && (
+  <div className="loader">
+    <p className="loading-content">Loading More</p>
+    <div className="loading-icon">
+      <Field
+        externalSource={LoadingIcon}
+        title=""
+        value=""
+        description=""
+      />
+    </div>
+  </div>
+)}
