@@ -1,0 +1,344 @@
+import React, { useContext, useState, useEffect, useRef } from "react";
+import "../../transfers/approvals-and-request/css/approvals.scss";
+import MobileNavigation from "../../../components/generic/mobile-navigation-approval";
+import {
+  formattedDate,
+  goBackToHomeScreen,
+  sliceDatePart,
+} from "../../../utils";
+import { QueryParamsContext } from "../../../context/QueryParamsContext";
+import Field from "../../../components/generic/Field";
+import LoadingIcon from "../../../../../src/assets/icons/loading-icon.svg";
+import Reject from "../../../../../src/assets/images/check-logo-reject.svg";
+import aaniLogo from "../../../../../src/assets/images/aani-logo.svg";
+import Check from "../../../../../src/assets/images/check-logo.svg";
+import Pending from "../../../../../src/assets/images/check-logo-pending.svg";
+import RejectTransferConfirmScreen from "./Approve-confirm-screen-reject";
+import { api } from "../../../../kitsu";
+import Review from "./Approve-confirm-screen";
+import { useIntl } from "react-intl";
+import { ErrorData, ExitAction } from "../../../enums/commonType";
+import { useNavigate } from "react-router-dom";
+import { GlobalErrorContext } from "../../../components/generic/global-error-handling";
+import { response } from "msw";
+
+const Approve = () => {
+  const paramsContext = useContext(QueryParamsContext);
+  const country = paramsContext["country"];
+  const types = ["Approvals"];
+  const types1 = ["Requests"];
+  const typessub = ["All", "Approved", "Rejected", "Pending"];
+  const [selectedContactTypes, setSelectedContacttypes] = useState(types[0]);
+  const [purposeOfTransfer, setPurposeOfTransfer] = useState([]);
+  const [selectedPayeeAccount, setSelectedPayeeAccount] = useState({});
+  const [transferData, setTransferData] = useState<any>();
+  const [transferDataSelect, setTransferDataSelect] = useState<any>();
+  const [isReview, setIsReview] = useState(false);
+  const [enrolledAccountDetails, setEnrolledAccountDetails] = useState();
+  const [contactDetails, setContactDetails] = useState({});
+  const [otherData, setOtherData] = useState({});
+  const [customerDetails, setEnrolledCustomerDetails] = useState({});
+  const [maskedAccNum, setMaskedAccNum] = useState("");
+  const { setGlobalErrorData } = useContext(GlobalErrorContext);
+  const intl = useIntl();
+  const navigate = useNavigate();
+  const today = new Date();
+  const pastDate = new Date();
+  pastDate.setDate(today.getDate() - 90);
+  const fromattedToday = today.toISOString().slice(0, 10);
+  const fromattedpastDate = pastDate.toISOString().slice(0, 10);
+  const [showLoader, setShowLoader] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const Card = ({}) => {
+    useEffect(() => {
+      if (scrollRef.current) {
+        const contentHeight = scrollRef.current.scrollHeight;
+        const viewportHeight = window.innerHeight;
+        setShowLoader(contentHeight > viewportHeight);
+      }
+    }, [transferData]);
+    return (
+      <>
+        <div className="transaction-container"></div>
+        <div ref={scrollRef} className="transaction-history-details">
+          {/* {console.log("transferData", transferData?.attributes[0])} */}
+          {console.log("transferData", transferData?.[0]?.["ecollections"])}
+          {transferData &&
+            transferData?.[0]?.["ecollections"].map((transaction: any) => {
+              function onSubmitTransfer3() {
+                {
+                  if (transaction["proposed-status"] === "Pending") {
+                    console.log("id", transaction);
+                    setTransferDataSelect(transaction);
+                    onSubmitTransfer();
+                    setIsReview(true);
+                  } else if (
+                    transaction["proposed-status"] === "Approved" ||
+                    transaction["proposed-status"] === "Rejected" ||
+                    transaction["proposed-status"] === "Canceled" ||
+                    transaction["proposed-status"] === "Expired"
+                  ) {
+                    setTransferDataSelect(transaction);
+                    onSubmitTransfer();
+                    let otherData = {
+                      "debit-account-num": customerDetails?.["account-no"],
+                      "debit-account-name":
+                        enrolledAccountDetails?.["product-description"],
+                    };
+                    setIsReview(true);
+                    navigate("/pay-transfer/transfer/transactions/paid", {
+                      state: { transferData, otherData, transaction },
+                    });
+                  }
+                }
+              }
+              return (
+                <div
+                  className="transaction-info"
+                  onClick={() => onSubmitTransfer3()}
+                  // key={transaction.id}
+                >
+                  <div className="customer-info">
+                    <p className="customer-pay">Pay to</p>
+                    <p className="customer-data">
+                      {/* {console.log("Data", transaction["ecollections"])} */}
+                      {formattedDate(transaction["request-submit-date"])}
+                    </p>
+                  </div>
+                  <div className="customer-details">
+                    <p className="customer-name">
+                      {transaction["creditor-details"]["name"]}
+                    </p>
+                    <p className="customer-currency">
+                      {transaction["transaction-currency"]}
+
+                      {transaction["transaction-amount"]}
+                    </p>
+                  </div>
+                  <p className="customer-data1">
+                    {transaction["request-purpose"]}
+                  </p>
+                  <div className="divider-logo"></div>
+
+                  <div className="customer-status">
+                    <p className="customer-pay">
+                      Due date:
+                      <span className="customer-pay-date">
+                        {sliceDatePart(transaction["expiry-date"])}
+                      </span>
+                    </p>
+
+                    <p className="check-logo">
+                      <Field
+                        externalSource={transaction.logo}
+                        title=""
+                        value=""
+                        description=""
+                      ></Field>
+                    </p>
+                    <p className="customer-status-confirm">
+                      {transaction["proposed-status"]}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </>
+    );
+  };
+  useEffect(() => {
+    const getEnrolledCustomerDetails = async () => {
+      api
+        .get("cpp-account-proxies/99999", {
+          params: {
+            filter: {
+              requestType: "ENROLLED_CUSTOMER_DETAILS",
+            },
+          },
+        })
+        .then((response: any) => {
+          setEnrolledCustomerDetails(response.data);
+          // return response.data;
+        })
+
+        .catch((error: any) => {
+          let message = intl.formatMessage({
+            id: "pay.transfer.failed.enrollmentstatus",
+          });
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setGlobalErrorData(errorObj);
+        });
+    };
+
+    getEnrolledCustomerDetails();
+  }, []);
+
+  useEffect(() => {
+    const getAccountDetails = async () => {
+      api
+        .get("casas", {
+          params: {
+            filter: {
+              "casas][filterType][EQ": "IBFT_A2A",
+              "casas][fallback][EQ": true,
+              "casas][nickNameFlag][EQ": true,
+            },
+          },
+        })
+        .then((casa: { data: [] }) => {
+          const allCasas = casa.data;
+          let accountDetails = allCasas.find(
+            (casa) => casa["account-number"] == customerDetails["account-no"]
+          );
+          setEnrolledAccountDetails(accountDetails);
+          if (accountDetails) {
+            let accountNum: string = accountDetails?.["account-number"];
+            let maskedAccountNum = accountNum && accountNum.slice(-4);
+            setMaskedAccNum(maskedAccountNum);
+          }
+        })
+        .catch((error: any) => {
+          let message = intl.formatMessage({
+            id: "pay.transfer.failed.accountunavilable",
+          });
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setGlobalErrorData(errorObj);
+        });
+    };
+    getAccountDetails();
+  }, [customerDetails]);
+
+  useEffect(() => {
+    onSubmitTransfer();
+  }, [customerDetails]);
+
+  const onSubmitTransfer = async () => {
+    console.log('customerDetails111', customerDetails);
+    try {
+      const { data } = await api.get("ecollections", {
+        params: {
+          filter: {
+            requestType: "RETRIEVE_RTP",
+            senderProxy: customerDetails?.["customer-info"]?.["mobile-no"],
+            typeRequestToPay: "REC",
+            fetchStartDate: fromattedpastDate,
+            fetchEndDate: fromattedToday,
+            appId: customerDetails?.["appId"],
+          },
+        },
+      });
+
+      let otherData = {
+        "debit-account-num": customerDetails?.["account-no"],
+        "debit-account-name": enrolledAccountDetails?.["product-description"],
+      };
+      console.log("Data", data);
+      console.log("transferData", transferData);
+      setOtherData(otherData);
+      setTransferData(data);
+      return data;
+    } catch (err) {
+      let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+      const errorObj = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+    }
+  };
+
+  function approve() {
+    navigate("/pay-transfer/transfer/transactions/approvals");
+  }
+
+  function request() {
+    navigate("/pay-transfer/transfer/transactions/requests");
+  }
+
+  return (
+    <>
+      <MobileNavigation
+        title={"Approvals & Requests"}
+        showBackButton={true}
+        onBackCallback={() => {}}
+        onReturnCallback={() => goBackToHomeScreen(country)}
+      />
+
+      <div className="contact-contact-list"></div>
+      <div className="contact-types">
+        {types.map((type, id) => (
+          <div
+            className={
+              type === selectedContactTypes
+                ? "each-contact-type selected-contact-type"
+                : "each-contact-type"
+            }
+            key={id}
+            onClick={() => approve()}
+          >
+            {type}
+          </div>
+        ))}
+
+        {types1.map((type, id) => (
+          <div
+            className={
+              type === selectedContactTypes
+                ? "each-contact-type selected-contact-type"
+                : "each-contact-type"
+            }
+            key={id}
+            onClick={() => request()}
+          >
+            {type}
+          </div>
+        ))}
+      </div>
+      <div className="each-contact-type selected-contact-type">
+        <Card />
+      </div>
+      <div className="transaction-container"></div>
+      {showLoader && (
+        <div className="loader">
+          <p className="loading-content">Loading More</p>
+          <div className="loading-icon">
+            <Field
+              externalSource={LoadingIcon}
+              title=""
+              value=""
+              description=""
+              ></Field>
+          </div>
+        </div>
+      )}
+      <div className="logo-footer" id={!showLoader ? "footer-text" :""}>
+        <div className="logo-text">POWERED BY</div>
+        <div className="logo-img">
+          <img src={aaniLogo} alt="sub-text" />
+        </div>
+      </div>
+
+      {isReview && (
+        <Review
+          isCashAdvanceFlow={false}
+          transferDataSelect={transferDataSelect}
+          transferData={transferData}
+          otherData={otherData}
+          module="AA"
+          onCloseClicked={() => setIsReview(false)}
+        />
+      )}
+    </>
+  );
+};
+
+export default Approve;
