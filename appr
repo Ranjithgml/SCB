@@ -124,7 +124,7 @@ const Approve = () => {
                     <p className="customer-pay">
                       Due date:
                       <span className="customer-pay-date">
-                        {sliceDatePart(transaction["expiry-date"])}
+                        {transaction["expiry-date"] && sliceDatePart(transaction["expiry-date"])}
                       </span>
                     </p>
 
@@ -218,11 +218,12 @@ const Approve = () => {
   }, [customerDetails]);
 
   useEffect(() => {
-    onSubmitTransfer();
+    if (customerDetails?.["appId"]) {
+      onSubmitTransfer();
+    }
   }, [customerDetails]);
 
   const onSubmitTransfer = async () => {
-    console.log('customerDetails111', customerDetails);
     try {
       const { data } = await api.get("ecollections", {
         params: {
@@ -267,7 +268,7 @@ const Approve = () => {
   return (
     <>
       <MobileNavigation
-        title={"Approvals & Requests"}
+        title={"Approvals & Request"}
         showBackButton={true}
         onBackCallback={() => {}}
         onReturnCallback={() => goBackToHomeScreen(country)}
