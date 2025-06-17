@@ -1,0 +1,31 @@
+const handleSelect = (purpose) => {
+  setSelectedPurpose(purpose); // (local state if you have one)
+  props.setPurposeOfTransfer(purpose); // send to SendMoney
+  props.actionOnPOT(false); // close the modal or overlay
+};
+
+{props.purposeOfTransfers.map((item, index) => (
+  <div
+    key={index}
+    onClick={() => handleSelect(item)}
+    className="purpose-item"
+  >
+    {item["pop-desc"]}
+  </div>
+))}
+
+
+interface Props {
+  purposeOfTransfers: any[];
+  setPurposeOfTransfer: (val: any) => void;
+  actionOnPOT: (flag: boolean) => void;
+  module?: string;
+}
+
+
+<PurposeOfTransfer
+  purposeOfTransfers={purposeOfTransfers}
+  setPurposeOfTransfer={setPurposeOfTransfer}
+  actionOnPOT={actionOnPOT}
+  module="SM"
+/>
