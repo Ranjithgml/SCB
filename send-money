@@ -1,0 +1,643 @@
+import React, { useContext, useEffect, useState } from "react";
+import { useIntl } from "react-intl";
+import classNames from "classnames";
+import { ProtonSwipeButton } from "@scb/proton-components-react";
+import Review from "../confirmation-screens/transfer-confirm-screen-overlay";
+import axios from "axios";
+
+import { goBackToHomeScreen, isWeb } from "../../../utils";
+import { QueryParamsContext } from "../../../context/QueryParamsContext";
+
+// Components
+import MobileNavigationOverlay from "../../../components/generic/mobile-navigation-overlay";
+import Accordion from "../../../components/generic/accordion";
+import AccordionItem from "../../../components/generic/accordion-item";
+import SelectedCreditCard from "../../../components/functional/selected-credit-card";
+import { ReactComponent as AaniLogo } from "../../../../assets/images/aani-logo.svg";
+
+// STYLES
+import "./css/transactions.scss";
+
+// PARTIALS
+import PaymentTypes from "./partials/payment-types";
+import ContactList from "./partials/contact-list";
+import AddNewNumber from "./partials/add-new-number";
+import AmountContainer from "../../../components/functional/amount-container";
+import ScheduleAndNotes from "../../../components/functional/schedule-and-notes";
+import Banner from "../../../components/functional/banner";
+import ContactCard from "../../../components/generic/contact-card/contact-card";
+import { api } from "../../../../kitsu";
+import { ErrorData, ExitAction } from "../../../enums/commonType";
+import PurposeOfTransfer from "../../../components/functional/purpose-of-transfer";
+import { GlobalErrorContext } from "../../../components/generic/global-error-handling";
+import Warning from "./partials/warning";
+import ImportantNotice from "../../../components/generic/important-notice";
+import AaniUnavailableModal from "../../../components/generic/modal/aani-unavailable-modal";
+import { cordovaWrapper } from "../../../utils/cordova-wrapper";
+import { useLocation } from "react-router-dom";
+import PoweredByFooter from "./partials/powered-by-footer";
+import aaniLogo from "../../../../assets/images/aani-logo.svg";
+
+const SendMoney = () => {
+  const intl = useIntl();
+  const paramsContext = React.useContext(QueryParamsContext);
+  const country = paramsContext["country"];
+  const { state } = useLocation();
+  const [isQRFlow, setQRFlow] = useState(false);
+
+  useEffect(() => {
+    getPops();
+  }, []);
+
+  useEffect(() => {
+    if (state?.number) {
+      setQRFlow(true);
+      setContactNum(state?.number);
+      setAccountSetupStep(2);
+      retrieveContacts(state?.number.replace("+", "$"));
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if(!isQRFlow) {
+        getContacts();
+    } 
+  }, []);
+
+  const [isVisible, setIsVisible] = React.useState(false);
+  const [accountSetupStep, setAccountSetupStep] = React.useState(1);
+  const [selectedPayeeAccount, setSelectedPayeeAccount] = React.useState({});
+  const [purposeOfTransfers, setPurposeOfTransfers] = useState([]);
+  const [purposeOfTransfer, setPurposeOfTransfer] = useState([]);
+  const [isReview, setIsReview] = useState<boolean>(false);
+  const { setGlobalErrorData } = useContext(GlobalErrorContext);
+  const [isPurposeOfTransferOpen, setIsPurposeOfTransferOpen] = useState(false);
+  const [transferData, setTransferData] = useState<any>();
+  const [contactNum, setContactNum] = useState("");
+  const [contactNumNewMobNum, setContactNewMobNum] = useState("");
+  const [notes, setNotes] = useState("");
+  const [isNotesValid, setIsNotesValid] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [contactDetails, setContactDetails] = useState({});
+  const [customerDetails, setEnrolledCustomerDetails] = useState({});
+  const [ip, setIp] = useState("");
+  const [os, setOs] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [deviceType, setDeviceType] = useState("");
+  const [enrolledAccountDetails, setEnrolledAccountDetails] = useState();
+  const [maskedAccNum, setMaskedAccNum] = useState("");
+  const [otherData, setOtherData] = useState({});
+  const [showInlineError, setShowInlineError] = useState(false);
+  const [inlineErrorMessage, setInlineErrorMessage] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [disableSwipeButton, setDisableSwipeButton] = useState(true);
+  const [nativeContacts, setNativeContacts] = useState<any>([]);
+
+  useEffect(() => {
+    if (parseFloat(amount) > 5000) {
+      setShowInlineError(true);
+      setInlineErrorMessage("Amount cannot exceed AED 5,000");
+    } else {
+      setShowInlineError(false);
+      setInlineErrorMessage("");
+    }
+  }, [amount]);
+
+  useEffect(() => {
+    if (amount && !showInlineError && isNotesValid) {
+      setDisableSwipeButton(false);
+    } else {
+      setDisableSwipeButton(true);
+    }
+  }, [amount, showInlineError, isNotesValid]);
+
+  useEffect(() => {
+    if(customerDetails) {
+      getAccountDetails();
+    }
+  }, [customerDetails])
+
+  useEffect(() => {
+    const getEnrolledCustomerDetails = async () => {
+      api
+        .get("cpp-account-proxies/99999", {
+          params: {
+            filter: {
+              requestType: "ENROLLED_CUSTOMER_DETAILS",
+            },
+          },
+        })
+        .then((response) => {
+          setEnrolledCustomerDetails(response.data);
+        })
+        .catch((error: any) => {
+          let message = intl.formatMessage({
+            id: "pay.transfer.failed.enrollmentstatus",
+          });
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setGlobalErrorData(errorObj);
+        });
+    };
+
+    const getIpAddress = () => {
+      axios
+        .get("https://api.ipify.org?format=json")
+        .then((response) => {
+          setIp(response.data.ip);
+        })
+        .catch((error) => {
+          let message = "We are unable to verify your ip address";
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setGlobalErrorData(errorObj);
+        });
+    };
+    const getLocalIP = async () => {
+      const pc = new RTCPeerConnection({iceServers: []});
+      pc.createDataChannel('');
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        const candidate = event.candidate.candidate;
+        const ipMatch = candidate.match(
+          /([0-9]{1,3}(\.[0-9]{1,3}){3})/
+        );
+        if (ipMatch) {
+          setIp(ipMatch[1]);
+        }
+      };
+      await pc.createOffer().then(offer => pc.setLocalDescription(offer));
+    };
+
+    const getOSVersion = () => {
+      const userAgent = navigator.userAgent;
+      let osVersion = "Unknown OS";
+      if (userAgent.indexOf("Win") !== -1) osVersion = "Windows";
+      else if (userAgent.indexOf("Mac") !== -1) osVersion = "MacOS";
+      else if (userAgent.indexOf("X11") !== -1) osVersion = "UNIX";
+      else if (userAgent.indexOf("Linux") !== -1) osVersion = "Linux";
+      else if (/Android/.test(userAgent)) osVersion = "Android";
+      else if (/iPhone|iPad|iPod/.test(userAgent)) osVersion = "iOS";
+      setOs(osVersion);
+    };
+
+    const getTimeZone = () => {
+      const now = new Date();
+      const utcString = now.toUTCString();
+      setTimezone(utcString);
+    };
+
+    const getDeviceType = () => {
+      const userAgent = navigator.userAgent;
+      let type = "Desktop";
+      if (/iPad|Tablet/.test(userAgent)) {
+        type = "Tablet";
+      } else if (/Mobi|Android|iPhone|iPod/.test(userAgent)) {
+        type = "Mobile";
+      }
+      setDeviceType(type);
+    };
+
+    getLocalIP();
+    getOSVersion();
+    getTimeZone();
+    getDeviceType();
+    getEnrolledCustomerDetails();
+  }, []);
+    const getAccountDetails = async () => {
+      api
+        .get("casas", {
+          params: {
+            filter: {
+              "casas][filterType][EQ": "IBFT_A2A",
+              "casas][fallback][EQ": true,
+              "casas][nickNameFlag][EQ": true,
+            },
+          },
+        })
+        .then((casa: { data: [] }) => {
+          const allCasas = casa.data;
+          let accountDetails = allCasas.find(
+            (casa) => casa?.["account-number"] == customerDetails?.["account-no"]
+          );
+          setEnrolledAccountDetails(accountDetails);
+          if (accountDetails) {
+            let accountNum: string = accountDetails?.["account-number"];
+            let maskedAccountNum = accountNum && accountNum.slice(-4);
+            setMaskedAccNum(maskedAccountNum);
+          }
+        })
+        .catch((error: any) => {
+          let message = intl.formatMessage({
+            id: "pay.transfer.failed.accountunavilable",
+          });
+          const errorObj: ErrorData = {
+            exitAction: ExitAction.WARNING,
+            message: message,
+            data: error,
+          };
+          setGlobalErrorData(errorObj);
+        });
+    };
+
+  async function getContacts() {
+    await cordovaWrapper("contacts", "contactList", []).then(
+      (contactData: any) => {
+        setNativeContacts(contactData);
+      }
+    );
+  }
+
+  function getSendMoneyPayload() {
+    let payload: any = {
+      country: "AE",
+      callerTraceId: customerDetails?.["customer-info"]?.["mobile-no"],
+      deviceIpAddress: ip,
+      "device-type": deviceType,
+      deviceOSVersion: os,
+      "app-id": customerDetails?.["appId"],
+      timeZone: timezone,
+      bankAccountId: customerDetails?.["bankAccountId"],
+      "txn-amount": amount,
+      "txn-cur": "AED",
+      "txn-remarks": notes,
+      recipientProxy: contactDetails?.["mobile"].replace("+", ""),
+      "proxy-type": customerDetails?.["proxy-type"],
+      "prxy-value": customerDetails?.["proxy-value"],
+      requestToPayId: "",
+      authorizationId: "ABCD12345",
+      securityToken: "ABCD12345",
+      "txn-mode": "", // needs to be checked
+      "dbt-acc-number": customerDetails?.["account-no"],
+      "payment-type": "IBFT",
+      "action-code": "verify",
+      "request-type": "SendMoney",
+      "categoryPurpose":"IPP",
+      "settlement-type": "OVERLAY",          
+      "sub-payment-type": "A2A",          
+      "dbt-acc-type": "CASA",        
+      "dbt-acc-cur": "AED"
+    };
+    return payload;
+  }
+
+  const onSubmitTrasfer = async () => {
+    try {
+      console.log("ContactNum ", contactNumNewMobNum)
+      let payload: any = getSendMoneyPayload();
+      const { data } = await api.post("cpp-payments", payload);
+      let otherData = {
+        "debit-account-num": enrolledAccountDetails?.["account-number"],
+        "debit-account-name": enrolledAccountDetails?.["product-description"],
+        "payee-name-in-aani": contactDetails?.["masked-name"],
+        "mobile": contactDetails?.["mobile"],
+        "pop-desc":
+          purposeOfTransfers.length == 1 &&
+          purposeOfTransfers?.[0]?.["pop-desc"],
+        notes: notes,
+      };
+      setOtherData(otherData);
+      setTransferData(data);
+      setIsReview(true);
+      const swipeButton: any =
+        document.getElementById("ProtonButton")?.children[0].children[0];
+      swipeButton.style = { left: "2px" };
+      //{{swipeButton.style ={left:'2px'}}}
+      return data;
+    } catch (err: any) {
+      console.log("errrr", err);
+      let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+      const errorObj: ErrorData = {
+        exitAction: ExitAction.WARNING,
+        message: message,
+        data: err,
+      };
+      setGlobalErrorData(errorObj);
+    }
+  };
+
+  const onContactCardSelected = (index: any) => {
+    window.sessionStorage.setItem("isNewContact", JSON.stringify(false));
+    setAccountSetupStep(2);
+    setContactNum(nativeContacts[index].phoneNumber);
+    const numericValue = nativeContacts[index].phoneNumber.replace(/[^0-9]/g, '');
+    retrieveContacts(numericValue);
+  };
+
+  const actionOnPOT = (action: boolean) => {
+    window.parent.scrollTo({ top: 0 });
+    setIsPurposeOfTransferOpen(action);
+  };
+
+  const retrieveContacts = async (contactNum) => {
+    setContactNewMobNum(contactNum);
+    api
+      .get("cpp-account-proxies", {
+        params: {
+          filter: {
+            requestType: "RETRIEVE_CONTACTS",
+            regSubTyp: "AEIPPOVERLAY",
+            "customerInfo.mobile-no": contactNum,
+          },
+        },
+      })
+      .then((contactDetails) => {
+        setContactDetails(contactDetails.data?.[0].contacts?.[0]);
+        setShowErrorPopup(false);
+      })
+      .catch((error: any) => {
+        let message = "We are unable to fetch the details for AANI.";
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setAccountSetupStep(1);
+        setShowErrorPopup(true);
+        // setGlobalErrorData(errorObj);
+      });
+  };
+
+  function getPops() {
+    let paymentType = "IBFT";
+    api
+      .get("cpp-rdm/pop", {
+        params: {
+          filter: {
+            destCtryCd: "ALL",
+            paymentType: paymentType,
+            subPaymentType: "OVERLAY",
+            accountType: "ALL",
+          },
+        },
+      })
+      .then((pops: any) => {
+        setPurposeOfTransfers(pops.data);
+      })
+      .catch((error: any) => {
+        let message = intl.formatMessage({ id: "pay.transfer.failed.title" });
+        const errorObj: ErrorData = {
+          exitAction: ExitAction.WARNING,
+          message: message,
+          data: error,
+        };
+        setGlobalErrorData(errorObj);
+      });
+  }
+
+  const goBackOneStep = () => {
+    if ((accountSetupStep === 2) && !(window.sessionStorage.getItem("isNewContact") === "true")) {
+      setAccountSetupStep(1);
+    } else if ((accountSetupStep === 2) && (window.sessionStorage.getItem("isNewContact") === "true")) {
+      setIsVisible(true)
+    } else {
+      goBackToHomeScreen(country);
+    }
+    sessionStorage.removeItem("isNewContact");
+  };
+  
+  const goBackLanding = () => {
+   setAccountSetupStep(1);
+  }
+
+  return (
+    <div className="send-money-wrapper">
+      <div>
+        <MobileNavigationOverlay
+          title={"Send Money"}
+          showBackButton={true}
+          showCloseButton={accountSetupStep !== 1}
+          onBackCallback={goBackOneStep}
+          onReturnCallback={() => goBackToHomeScreen(country)}
+          onReturnLanding={goBackLanding}
+        />
+      </div>
+      {isReview ? (
+        <Review
+          isCashAdvanceFlow={false}
+          transferData={transferData}
+          otherData={otherData}
+          module="SM"
+          onCloseClicked={() => {
+            setIsReview(false)
+            setAccountSetupStep(2)
+          }}
+          notes={notes}
+        />
+      ) : (
+        <></>
+      )}
+      <div className="send-money-content">
+        <Accordion>
+          <AccordionItem
+            clsNames={classNames("accordion lt_from", {
+              xccy: false,
+            })}
+            isOpen={false}
+            onCollapseClick={() => {}}
+            isExpandable={false}
+            selected={
+              enrolledAccountDetails && (
+                <SelectedCreditCard
+                  selectedAccBalance={
+                    enrolledAccountDetails?.["available-balance"]
+                  }
+                  selectedAccName={
+                    enrolledAccountDetails?.["product-description"]
+                  }
+                  selectedAccNumber={`*${maskedAccNum}`}
+                  selectedAccCurrency={"AED"}
+                  section="from"
+                />
+              )
+            }
+            titleLabelId={intl.formatMessage({ id: "pay.transfer.from" })}
+            subtitleLabelId={intl.formatMessage({
+              id: "pay.transfer.from.desc",
+            })}
+            subtitleLabelIdBold="transfer from?"
+            dataTestId="step-from"
+          ></AccordionItem>
+          <AccordionItem
+            clsNames={classNames("accordion lt_to", {
+              xccy: accountSetupStep === 1,
+            })}
+            isOpen={accountSetupStep === 1}
+            onCollapseClick={() => setAccountSetupStep(1)}
+            selected={
+              <SelectedCreditCard
+                selectedAccBalance={"avail-cash"}
+                selectedAccName={contactDetails?.["masked-name"] ? contactDetails?.["masked-name"] : "New Recipient"}
+                selectedAccNumber={""}
+                selectedAccCurrency={`Mobile ${contactDetails?.["mobile"] || contactNumNewMobNum}`}
+                section="To"
+              />
+            }
+            titleLabelId="To"
+            subtitleLabelId={"Who would you like to "}
+            subtitleLabelIdBold="pay to?"
+            dataTestId="step-from"
+          >
+            <div className="payee-contact-wrapper" style={{ flex: 1 }}>
+              <PaymentTypes setIsVisible={() => setIsVisible(!isVisible)} />
+              <ContactList
+                contactList={nativeContacts}
+                onContactCardSelected={onContactCardSelected}
+              />
+              <div className="footer">
+                <div
+                  className="footer-text"
+                  data-testid="carl-sld-one-footer-text"
+                >
+                  {intl.formatMessage({
+                    id: "fps.enrolment.powered.by",
+                  })}
+                </div>
+                <AaniLogo data-testid="carl-sld-one-aani-logo" />
+              </div>
+            </div>
+          </AccordionItem>
+          {accountSetupStep === 2 && (
+            <AccordionItem
+              clsNames={classNames("accordion lt-amount-container", {
+                xccy: accountSetupStep === 2,
+              })}
+              isOpen={accountSetupStep === 2}
+              onCollapseClick={() => {
+                setAccountSetupStep(2);
+              }}
+              titleLabelId="Amount  "
+              subtitleLabelId={""}
+              subtitleLabelIdBold=""
+            >
+              <div className="payee-amount-wrapper">
+                <AmountContainer
+                  currency={"AED"}
+                  amount={amount}
+                  focus={false}
+                  handleOnChange={(e) => {
+                    setAmount(e);
+                  }}
+                  showInlineError={showInlineError}
+                  inlineErrorMessage={inlineErrorMessage}
+                  setIsDirty={() => {}}
+                />
+                <ScheduleAndNotes
+                  notes={notes}
+                  notesChange={(e) => {
+                    setNotes(e);
+                  }}
+                  maxLength={35}
+                  setNotesValid={setIsNotesValid}
+                  notesOnly={true}
+                />
+                <div className="banner-sm">
+                  <Banner module="SM" />
+                </div>
+                <div>
+                  <h3 className="payee-detail-heading">
+                    Payee details in Aani
+                  </h3>
+                  <ContactCard
+                    contact={{
+                      fullName: contactDetails?.["masked-name"] ? contactDetails?.["masked-name"] : "New Recipient",
+                      phoneNumber: contactDetails?.["mobile"] ? contactDetails?.["mobile"] : contactNumNewMobNum,
+                    }}
+                    onClick={() => {}}
+                  />
+                </div>
+                <div>
+                  <PurposeOfTransfer
+                    purposeOfTransfers={purposeOfTransfers}
+                    setPurposeOfTransfer={setPurposeOfTransfer}
+                    actionOnPOT={actionOnPOT}
+                    module="SM"
+                  />
+                </div>
+                <Warning
+                  warningMsg={
+                    "Transferring Funds? Always check and verify before making fund transfers as fraudsters may use different tactics to trick you."
+                  }
+                />
+                <ImportantNotice
+                  content={intl.formatMessage({
+                    id: "pay.transfer.send.money.important.notes",
+                  })}
+                />
+                 <div className="logo-footer">
+                    <div className="logo-text">
+                      POWERED BY
+                    </div>
+                    <div className="logo-img">
+                      <img src={aaniLogo} alt="sub-text" />
+                    </div>
+                </div>
+                <ProtonSwipeButton
+                  disabled={disableSwipeButton}
+                  loading={false}
+                  context="Swipe to Transfer"
+                  id="ProtonButton"
+                  handleSwipeEnd={onSubmitTrasfer}
+                  data-testid="footer-swipe-btn-lg"
+                  style={{ marginTop: "30px" }}
+                />
+              </div>
+            </AccordionItem>
+          )}
+        </Accordion>
+      </div>
+      {isVisible ? (
+        <div className="add-new-number" style={{ flex: 1 }}>
+          <div className="proton-modal">
+            <div className="proton-modal__backdrop"></div>
+            <div className="proton-modal__container">
+              <AddNewNumber
+                contactList={nativeContacts}
+                modalClose={(newPhoneNum) => {
+                  if(newPhoneNum.length == 9) {
+                  setIsVisible(false);
+                  setAccountSetupStep(2);
+                  }
+                }}
+                retrieveContacts={retrieveContacts}
+                onAccountSelection={(selectedAcc) => {
+                  window.sessionStorage.setItem("isNewContact", JSON.stringify(true));
+                  setAccountSetupStep(2);
+                  setIsVisible(false);
+                  setSelectedPayeeAccount(selectedAcc);
+                }}
+                onSendData={""}
+                onBackToLanding={() => {
+                    setIsVisible(false);
+                    setAccountSetupStep(1);
+                }}
+                contactDetails={contactDetails}
+                setContactDetails={setContactDetails}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        ""
+      )}
+      {showErrorPopup && (
+        // <RejectTransferConfirmScreen
+        //   module={"AA"}
+        //   onCloseClicked={() => setIsRejectRequest(false)}
+        //   transferData={transferData}
+        // />
+        <AaniUnavailableModal
+          showErrorPopup={showErrorPopup}
+          setShowErrorPopup={setShowErrorPopup}
+        />
+      )}
+    </div>
+  );
+};
+export default SendMoney;
