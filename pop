@@ -1,0 +1,155 @@
+import {
+  ProtonContainer,
+  ProtonDropdown,
+  ProtonDropdownOption,
+  ProtonIcon,
+  ProtonInput,
+  ProtonModal,
+  ProtonModalTitle,
+} from "@scb/proton-components-react";
+import React, { FC, useEffect, useState, useRef } from "react";
+import { useIntl } from "react-intl";
+import "./css/purpose-of-transfer.scss";
+
+interface IPurposeOfTransferProps {
+  module?: string,
+  purposeOfTransfers: any[];
+  setPurposeOfTransfer: any;
+  actionOnPOT: any,
+  persistent?: any,
+}
+
+const PurposeOfTransfer: FC<IPurposeOfTransferProps> = ({
+  module,
+  purposeOfTransfers,
+  setPurposeOfTransfer,
+  actionOnPOT,
+  persistent = false,
+}) => {
+  const intl = useIntl();
+  const [searchPurposeOfTransfer, setSearchPurposeOfTransfer] =
+    useState<string>("");
+  const handlePurposeOfTransferChange = (event: any) => {
+    const query = event.detail;
+    setSearchPurposeOfTransfer(query);
+  };
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedPurpose, setSelectedPurpose] = useState<any>(null);
+  const transferRef = useRef<HTMLProtonInputElement>(null);
+
+  useEffect(() => {
+    if(purposeOfTransfers.length == 1) {
+      setSelectedPurpose(purposeOfTransfers[0]?.["pop-desc"]);
+    }
+  }, [purposeOfTransfers]);
+
+  useEffect(() => {
+    actionOnPOT(isOpen);
+    if(!isOpen) {
+      setSearchPurposeOfTransfer("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  const purposeOfTransferSelected = (purpose: any) => {
+    console.log('test111', purpose["pop-desc"]);
+    setSelectedPurpose(purpose["pop-desc"]);
+    setPurposeOfTransfer(purpose);
+    setIsOpen(false);
+  };
+
+  const filteredPurposeOfTransfer =
+    purposeOfTransfers &&
+    purposeOfTransfers.filter(
+      (purpose: any) =>
+        purpose &&
+        purpose["pop-desc"]
+          .toLowerCase()
+          .includes(searchPurposeOfTransfer.toLocaleLowerCase())
+    );
+
+    useEffect(() => {
+      if(isOpen) {
+        setTimeout(() => {
+          const inputEle = transferRef.current?.querySelector('input') as HTMLElement;      
+          inputEle?.focus();
+        }, 300);
+      }
+    }, [isOpen])
+
+  return (
+    <div
+      className="purpose-of-transfer-container"
+      data-testid="purpose-of-transfer"
+    >
+      <ProtonDropdown
+        label="Purpose Of Transfer"
+        placeholder={selectedPurpose ? selectedPurpose : "Select Purpose"}
+        title="Purpose Of Transfer"
+        onClick={() => setIsOpen(true)}
+        onKeyDown={(event: any) => {
+          if (event.key === "Enter") {
+            setIsOpen(true);
+          }
+        }}
+        data-testid="label-purpose-of-transf"
+      ></ProtonDropdown>
+      {isOpen && (
+        <ProtonModal
+          open={isOpen}
+          onModalClosed={() => setIsOpen(false)}
+          fullScreen
+          size="m"
+          persistent={persistent}
+        >
+          {persistent && <ProtonIcon
+            className="proton-modal__close-button"
+            name="x-solid"
+            width="24px"
+            height="24px"
+            onClick={() => setIsOpen(false)}
+            data-testid="search-bank-close"
+          ></ProtonIcon>}
+          <ProtonModalTitle slot="title">
+            {" "}
+            {intl.formatMessage({ id: "pay.transfer.purpose" })}
+          </ProtonModalTitle>
+          <div className="search-container">
+            <ProtonInput
+              data-testid="search-POT-input"
+              name="Search"
+              placeholder="Search"
+              style={{ width: "95%" }}
+              onValueChanged={(event) => handlePurposeOfTransferChange(event)}
+              ref={transferRef}
+            ></ProtonInput>
+            <ProtonIcon className="search-icon" name="magnifying-glass" />
+          </div>
+          <ProtonContainer className="dropdown-values">
+            {filteredPurposeOfTransfer.map((purpose, index) => (
+              <ProtonDropdownOption
+                key={index}
+                label={purpose["pop-desc"]}
+                value={purpose}
+                data-testid="pop-options"
+                onClick={() => purposeOfTransferSelected(purpose)}
+                onKeyDown={(event: any) => {
+                  if (event.key === "Enter") {
+                    purposeOfTransferSelected(purpose);
+                  }
+                }}
+                className={
+                  purpose["pop-desc"] === selectedPurpose
+                    ? "transfer-active"
+                    : "transfer"
+                }
+              ></ProtonDropdownOption>
+            ))}
+          </ProtonContainer>
+        </ProtonModal>
+      )}
+    </div>
+  );
+};
+
+export default PurposeOfTransfer;
