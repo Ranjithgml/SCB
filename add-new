@@ -1,1 +1,171 @@
-AddNewNumber
+import React, { useEffect, useState } from "react";
+import { ProtonIcon } from "@scb/proton-components-react";
+
+// COMPONENTS
+import ContactCard from "../../../../components/generic/contact-card/contact-card";
+import { ReactComponent as AlarmIcon } from "../../../../../assets/icons/Alarm.svg";
+
+// STYLES
+import "../css/add-new-number.scss";
+
+// import KeyBoard from "../../../../components/generic/keyboard/keybord";
+
+const CircularLoader = () => {
+  return <div className="circular-loader" />;
+};
+
+const AddNewNumber = ({ contactList, modalClose, onAccountSelection, onSendData, onBackToLanding, retrieveContacts, contactDetails, setContactDetails }) => {
+  const [newPhoneNum, setNewPhoneNum] = React.useState("");
+  const [existingNumbersList, setExistingNumberList] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [keyPressed, setKeyPressed] = useState("");
+  // const [contactDetails, setContactDetails] = useState({});
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  React.useEffect(() => {
+    setIsLoading(true);
+    const foundNumbersList = contactList.filter((eachContact) =>
+      eachContact.phoneNumber.toLocaleLowerCase().includes(newPhoneNum)
+    );
+    let timer = setTimeout(() => {
+      setExistingNumberList([]); // Needs amendment after cordova integration
+      setIsLoading(false);
+    }, 1000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [keyPressed]);
+
+  useEffect(() => {
+    if (newPhoneNum.length == 9) retrieveContacts(newPhoneNum.replace("+", "$"));
+    else setContactDetails({})
+  }, [newPhoneNum])
+
+  const handlePhoneNumberChange = (e) => {
+    const { value } = e.target;
+    const phoneNum = value.replace(/\D/g, '').slice(0, 9);
+    setNewPhoneNum(phoneNum);
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.which < 48 || e.which > 57) {
+      e.preventDefault();
+    }
+    setKeyPressed(e.target.value);
+  }
+
+  // const retrieveContacts = async (contactNum) => {
+  //   console.log("Contact Num", contactNum)
+  //   api
+  //     .get("cpp-account-proxies", {
+  //       params: {
+  //         filter: {
+  //           "requestType": "RETRIEVE_CONTACTS",
+  //           "regSubTyp": "CUSTOMERENROLMENT",
+  //           "customerInfo.mobile-no": contactNum,
+  //         },
+  //       },
+  //     })
+  //     .then(contactDetails => {
+  //       setContactDetails(contactDetails.data?.[0].contacts?.[0]);
+  //       onSendData(contactDetails.data?.[0].contacts?.[0])
+  //       console.log(contactDetails.data?.[0].contacts?.[0])
+  //     })
+  //     .catch((error: any) => {
+  //       console.log("Error is from RETRIEVE_CONTACTS API ", error)
+  //     });
+  // };
+
+  const sendMoneyToNewContact = () => {
+    window.sessionStorage.setItem("isNewContact", JSON.stringify(true));
+    modalClose(newPhoneNum);
+  }
+  return (
+    <div className="add-new-num-wrapper">
+      <div className="new-num-header">
+        <div className="header-title">New Mobile Number</div>
+        <button
+          type="button"
+          className="proton-modal__close-button"
+          onClick={onBackToLanding}
+        >
+          <ProtonIcon name="x-solid" size="m" color="black" />
+        </button>
+      </div>
+      <div className="new-numb-wrapper">
+        <div className="phone-number-header">Enter a Mobile Number</div>
+        <input
+          className="ph-numb-input"
+          placeholder="0000 0000"
+          onChange={(e) => {
+            handlePhoneNumberChange(e);
+          }}
+          maxLength={9}
+          onKeyPress={handleKeyPress}
+          inputMode="numeric"
+        />
+        <div className="numbers-list-heading" style={{display: "flex"}}>
+          <ProtonIcon name="info" style={{marginRight: "5px", marginTop: "10px"}}/>
+            <p style={{fontSize: "12px", marginTop: "10px"}}>To find contacts, enter their full mobile number. Enter phone number without country prefix.</p>
+        </div>
+        {newPhoneNum.length && isLoading ? <CircularLoader /> : ""}
+        {newPhoneNum.length && !isLoading ? (
+          <div className="existing-accounts">
+            <div className="numbers-list-heading">Available on Aani</div>
+            <div className="list" style={{border: "none"}}>
+            <ContactCard
+                  contact={{
+                    fullName: contactDetails?.["masked-name"],
+                    phoneNumber: `+971 ${newPhoneNum}`,
+                  }}
+                  onClick={sendMoneyToNewContact}
+                />
+              {/* {existingNumbersList.map((eachContact: any) => (
+                <ContactCard
+                  contact={{
+                    ...eachContact,
+                    contact_num: `Mobile ${eachContact["contact_num"]}`,
+                  }}
+                  key={eachContact["contact_num"] + eachContact["contact_name"]}
+                  onClick={() => onAccountSelection(eachContact)}
+                />
+              ))} */}
+            </div>
+            <div className="acc-selection-desc">
+              Tapping on this payee will make a direct one-time payment.
+            </div>
+            <div className="acc-warning">
+              <div className="alarm-bg">
+                <AlarmIcon />
+              </div>
+              <div className="warning-text">
+                Beware of a targeted SMS scam offering promotional Fixed Deposit
+                rates sent from a +65 number. To verify the authenticity of
+                promotions, visit SC singapore's website before you proceed.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <></>
+          // <div className="existing-accounts">
+          //   {newPhoneNum.length && !isLoading ? (
+          //     <>
+          //       <ContactCard
+          //         contact={{
+          //           contact_name: contactDetails?.["masked-name"],
+          //           contact_num: `+971 ${newPhoneNum}`,
+          //         }}
+          //         onClick={sendMoneyToNewContact}
+          //       />
+          //     </>
+          //   ) : (
+          //     ""
+          //   )}
+          // </div>
+        )}
+      </div>
+      {/* <KeyBoard captureKeyPress={() => {}} enteredToken={[]} /> */}
+    </div>
+  );
+};
+
+export default AddNewNumber;
