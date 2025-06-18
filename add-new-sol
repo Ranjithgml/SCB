@@ -1,0 +1,59 @@
+// New state to hold filtered local contacts (1–8 digit search)
+const [filteredContacts, setFilteredContacts] = useState([]);
+
+useEffect(() => {
+  const phone = newPhoneNum.trim();
+
+  if (phone.length === 9) {
+    // Call retrieveContacts for 9 digits
+    retrieveContacts(phone.replace("+", "$"));
+    setFilteredContacts([]); // Clear local matches
+  } else if (phone.length > 0 && phone.length < 9) {
+    // Filter local contactList
+    const matches = contactList.filter((contact) =>
+      contact.phoneNumber.includes(phone)
+    );
+    setFilteredContacts(matches);
+    setContactDetails({}); // Clear API data
+  } else {
+    // Clear everything if input is empty
+    setFilteredContacts([]);
+    setContactDetails({});
+  }
+}, [newPhoneNum]);
+
+
+Render Logic
+============
+<div className="existing-accounts">
+  <div className="numbers-list-heading">Available on Aani</div>
+  <div className="list" style={{ border: "none" }}>
+    {/* If 1–8 digits entered, show local matches */}
+    {filteredContacts.length > 0 &&
+      filteredContacts.map((contact) => (
+        <ContactCard
+          contact={{
+            fullName: contact.fullName || contact.contact_name,
+            phoneNumber: contact.phoneNumber,
+          }}
+          key={contact.phoneNumber}
+          onClick={() => onAccountSelection(contact)}
+        />
+      ))}
+
+    {/* If 9 digits, show API contact */}
+    {newPhoneNum.length === 9 && contactDetails?.["masked-name"] && (
+      <ContactCard
+        contact={{
+          fullName: contactDetails?.["masked-name"],
+          phoneNumber: `+971 ${newPhoneNum}`,
+        }}
+        onClick={sendMoneyToNewContact}
+      />
+    )}
+  </div>
+
+  <div className="acc-selection-desc">
+    Tapping on this payee will make a direct one-time payment.
+  </div>
+</div>
