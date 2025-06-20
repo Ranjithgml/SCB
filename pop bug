@@ -1,3 +1,19 @@
+const rawMobile = contactDetails?.["mobile"] || "";
+
+// Check if the number starts with + and has at least 6 more digits
+let formattedMobile = rawMobile;
+
+if (/^\+\d{1,4}\d{6,}$/.test(rawMobile)) {
+  const countryCode = rawMobile.match(/^\+\d{1,4}/)[0]; // extract +971
+  const number = rawMobile.slice(countryCode.length);   // extract rest of the number
+  formattedMobile = ${countryCode} ${number};
+}
+
+const phonenumber = Mobile ${formattedMobile};
+
+
+
+
 const handleSelect = (purpose) => {
   setSelectedPurpose(purpose); // (local state if you have one)
   props.setPurposeOfTransfer(purpose); // send to SendMoney
