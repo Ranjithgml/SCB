@@ -1,3 +1,22 @@
+return(
+     <div>
+                  <h3 className="payee-detail-heading">
+                    Payee details in Aani
+                  </h3>
+                  <ContactCard
+                    contact={{
+                      fullName: contactDetails?.["masked-name"],
+                      phoneNumber: `Mobile ${contactDetails?.["mobile"]}`,
+                    }}
+                    onClick={() => {}}
+                  />
+                </div>
+)
+
+
+
+
+
 const rawMobile = contactDetails?.["mobile"] || "";
 
 // Check if the number starts with + and has at least 6 more digits
