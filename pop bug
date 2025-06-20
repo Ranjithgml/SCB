@@ -1,3 +1,15 @@
+selectedAccCurrency={
+  contactDetails?.["Mobile"]
+    ? contactDetails["Mobile"].startsWith("+971")
+      ? `Mobile +971 ${contactDetails["Mobile"].slice(4)}`
+      : `Mobile ${contactDetails["Mobile"]}`
+    : contactNumNewMobNum?.startsWith("+971")
+      ? `Mobile +971 ${contactNumNewMobNum.slice(4)}`
+      : `Mobile ${contactNumNewMobNum}`
+}
+
+
+
 phoneNumber:
   contactDetails?.["mobile"]
     ? contactDetails["mobile"].startsWith("+971")
