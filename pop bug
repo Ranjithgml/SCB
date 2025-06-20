@@ -2,6 +2,27 @@ const formatMobileNumber = (number) => {
   if (!number || typeof number !== "string") return "";
   if (!number.startsWith("+971")) return number;
 
+  const countryCode = number.slice(0, 4);      // "+971"
+  const localPart = number.slice(4);           // "568902357"
+  return `${countryCode} ${localPart}`;
+};
+
+selectedAccCurrency = {`Mobile ${formatMobileNumber(contactDetails["mobile"])}`}
+
+
+
+
+
+
+
+
+
+
+
+const formatMobileNumber = (number) => {
+  if (!number || typeof number !== "string") return "";
+  if (!number.startsWith("+971")) return number;
+
   const countryCode = number.slice(0, 4); // +971
   const localPart = number.slice(4); // rest of the number
   return `${countryCode} ${localPart}`;
