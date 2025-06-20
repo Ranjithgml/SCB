@@ -1,3 +1,9 @@
+phoneNumber: contactDetails?.["mobile"]?.startsWith("+971")
+  ? `Mobile +971 ${contactDetails["mobile"].slice(4)}`
+  : `Mobile ${contactDetails?.["mobile"]}`
+
+
+
 return(
      <div>
                   <h3 className="payee-detail-heading">
