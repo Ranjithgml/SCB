@@ -1,4 +1,61 @@
- <div className="request-money-footer">
+<ProtonSwipeButton
+  className="proton-button"
+  disabled={false}
+  loading={false}
+  context="Swipe to Transfer"
+  id="ProtonButton"
+  handleSwipeEnd={() => setIsReview(true)}
+  data-testid="footer-swipe-btn-lg"
+/>
+
+
+.request-money-footer {
+  padding: 22px 15px 24px 15px;
+  background-color: #ffffff;
+  position: fixed;
+  bottom: 0px;
+  width: 100%;
+  z-index: 10;
+  text-align: center;
+  font-size: 16px;
+  border-top: 1px solid #EEEEEE;
+
+  display: flex;
+  justify-content: center;
+
+  .proton-swipe-button {
+    left: 0px;
+  }
+
+  .proton-button {
+    width: 100%;
+    max-width: 540px;
+
+    @media (max-width: 768px) {
+      max-width: 345px;
+      height: 40px;
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div className="request-money-footer">
                   <div className="">
                     <ProtonSwipeButton
                       disabled={false}
