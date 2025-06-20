@@ -1,3 +1,26 @@
+<AccordionItem
+            clsNames={classNames("accordion lt_to", {
+              xccy: accountSetupStep === 1,
+            })}
+            isOpen={accountSetupStep === 1}
+            onCollapseClick={() => setAccountSetupStep(1)}
+            selected={
+              <SelectedCreditCard
+                selectedAccBalance={"avail-cash"}
+                selectedAccName={contactDetails?.["masked-name"] ? contactDetails?.["masked-name"] : "New Recipient"}
+                selectedAccNumber={""}
+                selectedAccCurrency={`Mobile ${contactDetails?.["mobile"] || contactNumNewMobNum}`}
+                section="To"
+              />
+            }
+            titleLabelId="To"
+            subtitleLabelId={"Who would you like to "}
+            subtitleLabelIdBold="pay to?"
+            dataTestId="step-from"
+          >
+
+
+
 selectedAccCurrency={
   contactDetails?.["Mobile"]
     ? contactDetails["Mobile"].startsWith("+971")
