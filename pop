@@ -1,10 +1,33 @@
 let responseDate = "12-Jun-2025 02:39:45 PM";
-
 I want to display in below FormDataEvent
-"12-Jun-2025 02:39:45 PM"
-
-
 Mon, 25 May 2025, 12.20 pm
+
+import React from "react";
+
+const DateDisplay = () => {
+  const responseDate = "12-Jun-2025 02:39:45 PM";
+
+  // Convert to Date object
+  const parsedDate = new Date(responseDate.replace(/-/g, " "));
+
+  // Format options
+  const formattedDate = parsedDate.toLocaleString("en-GB", {
+    weekday: "short",      // Thu
+    day: "2-digit",        // 12
+    month: "short",        // Jun
+    year: "numeric",       // 2025
+    hour: "2-digit",       // 02
+    minute: "2-digit",     // 39
+    hour12: true,
+  });
+
+  // Replace ":" with "." in time
+  const displayDate = formattedDate.replace(":", ".").toLowerCase();
+
+  return <div>{displayDate}</div>;
+};
+
+export default DateDisplay;
 
 
 
