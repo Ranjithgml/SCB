@@ -1,3 +1,38 @@
+import React from "react";
+
+const DateDisplay = () => {
+  const responseDate = "12-Jun-2025 02:39:45 PM";
+
+  // Convert to Date object (replacing dashes with spaces for parsing)
+  const parsedDate = new Date(responseDate.replace(/-/g, " "));
+
+  // Format components individually
+  const weekday = parsedDate.toLocaleDateString("en-GB", { weekday: "short" });
+  const day = parsedDate.getDate().toString().padStart(2, "0");
+  const month = parsedDate.toLocaleDateString("en-GB", { month: "short" });
+  const year = parsedDate.getFullYear();
+
+  let hours = parsedDate.getHours();
+  const minutes = parsedDate.getMinutes().toString().padStart(2, "0");
+  const isPM = hours >= 12;
+  const displayHours = ((hours + 11) % 12 + 1).toString().padStart(2, "0"); // Convert to 12hr format
+
+  const meridian = isPM ? "pm" : "am";
+
+  // Capitalize first letter of weekday and month
+  const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+
+  const formattedString = `${capitalize(weekday)}, ${day} ${capitalize(month)} ${year}, ${displayHours}.${minutes} ${meridian}`;
+
+  return <div>{formattedString}</div>;
+};
+
+export default DateDisplay;
+
+
+
+
+
 let responseDate = "12-Jun-2025 02:39:45 PM";
 I want to display in below FormDataEvent
 Mon, 25 May 2025, 12.20 pm
